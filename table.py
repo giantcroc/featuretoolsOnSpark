@@ -230,7 +230,7 @@ class Table(object):
     @property
     def shape(self):
         '''Shape of the entity's dataframe'''
-        return (self.raw_data.count(),self.df.shape[1])
+        return (self.raw_data.count(),len(self.columns))
 
 def _validate_table_params(id, df):
     '''Validation checks for Table inputs'''

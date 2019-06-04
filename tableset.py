@@ -219,4 +219,117 @@ class TableSet(object):
         self.reset_data_description()
         return self
 
-   
+    def get_backward_tables(self, table_id, deep=False):
+        """Get tables that are in a backward relationship with table
+
+        Args:
+            table_id (str) - Id table of table to search from.
+            deep (bool) - If True, recursively find backward tables.
+
+        Returns:
+            Set of each :class:`.Table` in a backward relationship.
+        """
+        children = [r.child_table.id for r in
+                    self.get_backward_relationships(table_id)]
+        if deep:
+            children_deep = set([])
+            for p in children:
+                children_deep.add(p)
+                to_add = self.get_backward_tables(p, deep=True)
+                children_deep = children_deep.union(to_add)
+
+            children = children_deep
+        return set(children)
+
+    def get_backward_relationships(self, table_id):
+        """
+        get relationships where table "table_id" is the parent.
+
+        Args:
+            table_id (str): Id of table to get relationships for.
+
+        Returns:
+            list[:class:`.Relationship`]: list of backward relationships
+        """
+        return [r for r in self.relationships if r.parent_table.id == table_id]
+
+    def get_forward_tables(self, table_id, deep=False):
+        """Get tables that are in a forward relationship with table
+
+        Args:
+            table_id (str) - Id table of table to search from.
+            deep (bool) - if True, recursively find forward tables.
+
+        Returns:
+            Set of table IDs in a forward relationship with the passed in
+            table.
+        """
+        parents = [r.parent_table.id for r in
+                   self.get_forward_relationships(table_id)]
+
+        if deep:
+            parents_deep = set([])
+            for p in parents:
+                parents_deep.add(p)
+
+                # no loops that are typically caused by one to one relationships
+                if table_id in self.get_forward_tables(p):
+                    continue
+
+                to_add = self.get_forward_tables(p, deep=True)
+                parents_deep = parents_deep.union(to_add)
+
+            parents = parents_deep
+
+        return set(parents)
+
+    def get_forward_relationships(self, table_id):
+        """Get relationships where table "table_id" is the child
+
+        Args:
+            table_id (str): Id of table to get relationships for.
+
+        Returns:
+            list[:class:`.Relationship`]: List of forward relationships.
+        """
+        return [r for r in self.relationships if r.child_table.id == table_id]
+
+    def find_backward_path(self, start_table_id, goal_table_id):
+        """Find a backward path between a start and goal table
+
+        Args:
+            start_table_id (str) : Id of table to start the search from.
+            goal_table_id  (str) : Id of table to find backward path to.
+
+        Returns:
+            List of relationship that go from start table to goal table. None
+            is returned if no path exists.
+        """
+        forward_path = self.find_forward_path(goal_table_id, start_table_id)
+        if forward_path is not None:
+            return forward_path[::-1]
+        return None
+
+    def find_forward_path(self, start_table_id, goal_table_id):
+        """Find a forward path between a start and goal table
+
+        Args:
+            start_table_id (str) : id of table to start the search from
+            goal_table_id  (str) : if of table to find forward path to
+
+        Returns:
+            List of relationships that go from start table to goal
+                table. None is return if no path exists
+
+        """
+
+        if start_table_id == goal_table_id:
+            return []
+
+        for r in self.get_forward_relationships(start_table_id):
+            new_path = self.find_forward_path(
+                r.parent_table.id, goal_table_id)
+            if new_path is not None:
+                return [r] + new_path
+
+        return None
