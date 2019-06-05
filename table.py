@@ -58,21 +58,7 @@ class Table(object):
         self._create_columns(column_types, index)
 
         self.df = self.df[[c.id for c in self.columns]]
-        self.set_index(index,False)
-
-    def set_index(self, column_id, unique=True):
-        """
-        Args:
-            column_id (string) : Name of an existing column to set as index.
-            unique (bool) : Whether to assert that the index is unique.
-        """
-        self.df = self.df.set_index(self.df[column_id], drop=False)
-        self.df.index.name = None
-        if unique:
-            assert self.df.index.is_unique, "Index is not unique on dataframe (Table {})".format(self.id)
-
-        self.convert_column_type(column_id, ctypes.Index)
-        self.index = column_id
+        #self.convert_column_type(index, ctypes.Index)
     
     def _create_columns(self, column_types, index):
         """Extracts the columns from a dataframe
@@ -88,7 +74,7 @@ class Table(object):
         if index not in column_types:
             column_types[index] = ctypes.Index
 
-        link_cols = []#self.get_linked_cols()
+        link_cols = self.get_linked_cols()
         inferred_column_types = self.infer_column_types(link_cols,column_types)
 
         inferred_column_types.update(column_types)
@@ -96,7 +82,6 @@ class Table(object):
         for c in inferred_column_types:
             ctype = inferred_column_types[c]
             if isinstance(ctype, tuple):
-                # vtype is (ft.column, dict_of_kwargs)
                 _c = ctype[0](c, self, **ctype[1])
             else:
                 _c = inferred_column_types[c](c, self)
@@ -197,6 +182,35 @@ class Table(object):
 
         raise KeyError("Column: %s not found in table" % (column_id))
 
+    def _get_column_ids(self):
+        """Get column ids
+
+        Args:
+            column_id (str) : Id of column to get.
+
+        Returns:
+            :[str]: ids of column.
+        """
+        return [column.id for column in self.columns ]
+
+    def _get_column_index(self, column_id):
+        """Get column index in self.columns
+
+        Args:
+            column_id (str) : Id of column to get.
+
+        Returns:
+            :int:index of column.
+
+        Raises:
+            RuntimeError : if no column exist with provided id
+        """
+        for i,v in enumerate(self.columns):
+            if v.id == column_id:
+                return i
+
+        raise KeyError("Column: %s not found in table" % (column_id))
+
 
     def convert_column_type(self, column_id, new_type,
                               **kwargs):
@@ -210,6 +224,15 @@ class Table(object):
         column = self._get_column(column_id)
         new_column = new_type.create_from(column)
         self.columns[self.columns.index(column)] = new_column
+
+    def convert_column_id(self,column_id,new_id):
+        
+        self.raw_data = self.raw_data.withColumnRenamed(column_id,new_id)
+
+        index = self._get_column_index(column_id)
+        column = self._get_column(column_id)
+        column.id = new_id
+        self.columns[index] = column
 
     def __repr__(self):
         repr_out = u"Table: {}\n".format(self.id)
@@ -271,6 +294,7 @@ class Table(object):
             self.raw_data = self.raw_data.withColumn(index,new_add_col-1)
 
         # Case 6: user specified index, which is already in df. No action needed.
+        self.index=index
         return  df
 
 if __name__ == "__main__":

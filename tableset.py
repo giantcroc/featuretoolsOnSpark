@@ -75,7 +75,6 @@ class TableSet(object):
             child_column = self[relationship[2]][relationship[3]]
             self.add_relationship(Relationship(parent_column,
                                                child_column))
-        self.reset_data_description()
     
     def table_from_dataframe(self,
                               table_id,
@@ -119,12 +118,24 @@ class TableSet(object):
             column_types=column_types,
             index=index,
             make_index=make_index)
+
+        for k,v in self.table_dict.items():
+            inters = set(v._get_column_ids()).intersection(set(table._get_column_ids()))
+            inters = [inter for inter in inters]
+            if len(inters)>0:
+                print(k,table.id,inters)
+                for inter in inters[::-1]:
+                    print(inter,"1111111111111111111111111111111111111111111")
+                    v.convert_column_id(inter,k+'_'+inter)
+                    #self.table_dict[k] = v
+
+                    table.convert_column_id(inter,table.id+'_'+inter)
+                    print(v.columns,table.columns)
+
         self.table_dict[table.id] = table
-        self.reset_data_description()
+
         return self
     
-    def reset_data_description(self):
-        self._data_description = None
 
     @property
     def tables(self):
@@ -216,7 +227,6 @@ class TableSet(object):
                                         child_v, child_e.id, child_dtype))
 
         self.relationships.append(relationship)
-        self.reset_data_description()
         return self
 
     def get_backward_tables(self, table_id, deep=False):

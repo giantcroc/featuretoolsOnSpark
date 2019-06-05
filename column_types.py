@@ -9,17 +9,14 @@ class Column(object):
     Args:
         id (str) : Id of column. The name in table.
         table (:class:`.Table`) : Table this column belongs to.
-        name (str, optional) : column name. Defaults to id.
-
     
     """
     type_string = None
     _default_dtype = object
 
-    def __init__(self, id, table, name=None):
+    def __init__(self, id, table):
         assert isinstance(id,str), "Column id must be a string"
         self.id = id
-        self._name = name
         self.table_id = table.id
         assert table.tableset is not None, "table must contain reference to TableSet"
         self.table = table
@@ -34,7 +31,7 @@ class Column(object):
             self.id == other.id and self.table_id == other.table_id
     
     def __repr__(self):
-        ret = u"<Column: {} (dtype = {})>".format(self.name, self.type_string)
+        ret = u"<Column: {} (dtype = {})>".format(self.id, self.type_string)
 
         # encode for python 2
         if type(ret) != str:
@@ -53,21 +50,13 @@ class Column(object):
             :class:`.Column` : new column
 
         """
-        v = cls(id=column.id, name=column.name, table=column.table)
+        v = cls(id=column.id, table=column.table)
         return v
-
-    @property
-    def name(self):
-        return self._name if self._name is not None else self.id
 
     @property
     def dtype(self):
         return self.type_string \
             if self.type_string is not None else "generic_type"
-
-    @name.setter
-    def name(self, name):
-        self._name = name
 
     @property
     def interesting_values(self):
@@ -88,7 +77,6 @@ class Column(object):
                 'value': self.type_string,
             },
             'properties': {
-                'name': self.name,
                 'table': self.table.id,
                 'interesting_values': self._interesting_values
             },
@@ -102,8 +90,8 @@ class Discrete(Column):
     """Superclass representing columns that take on discrete values"""
     type_string = "discrete"
 
-    def __init__(self, id, table, name=None):
-        super(Discrete, self).__init__(id, table, name)
+    def __init__(self, id, table):
+        super(Discrete, self).__init__(id, table)
         self._interesting_values = []
 
     @property
@@ -130,14 +118,13 @@ class Boolean(Column):
     def __init__(self,
                  id,
                  table,
-                 name=None,
                  true_values=None,
                  false_values=None):
         default = [1, True, "true", "True", "yes", "t", "T"]
         self.true_values = true_values or default
         default = [0, False, "false", "False", "no", "f", "F"]
         self.false_values = false_values or default
-        super(Boolean, self).__init__(id, table, name=name)
+        super(Boolean, self).__init__(id, table)
 
     def to_data_description(self):
         description = super(Boolean, self).to_data_description()
@@ -156,9 +143,9 @@ class Categorical(Discrete):
     """
     type_string = "categorical"
 
-    def __init__(self, id, table, name=None, categories=None):
+    def __init__(self, id, table, categories=None):
         self.categories = None or []
-        super(Categorical, self).__init__(id, table, name=name)
+        super(Categorical, self).__init__(id, table)
 
     def to_data_description(self):
         description = super(Categorical, self).to_data_description()
@@ -198,14 +185,13 @@ class Numeric(Column):
     def __init__(self,
                  id,
                  table,
-                 name=None,
                  range=None,
                  start_inclusive=True,
                  end_inclusive=False):
         self.range = None or []
         self.start_inclusive = start_inclusive
         self.end_inclusive = end_inclusive
-        super(Numeric, self).__init__(id, table, name=name)
+        super(Numeric, self).__init__(id, table)
 
     def to_data_description(self):
         description = super(Numeric, self).to_data_description()
@@ -236,12 +222,12 @@ class Datetime(Column):
     type_string = "datetime"
     _default_pandas_dtype = np.datetime64
 
-    def __init__(self, id, table, name=None, format=None):
+    def __init__(self, id, table, format=None):
         self.format = format
-        super(Datetime, self).__init__(id, table, name=name)
+        super(Datetime, self).__init__(id, table)
 
     def __repr__(self):
-        ret = u"<Column: {} (dtype: {}, format: {})>".format(self.name, self.type_string, self.format)
+        ret = u"<Column: {} (dtype: {}, format: {})>".format(self.id, self.type_string, self.format)
 
         # encode for python 2
         if type(ret) != str:
@@ -287,14 +273,13 @@ class Timedelta(Column):
     def __init__(self,
                  id,
                  table,
-                 name=None,
                  range=None,
                  start_inclusive=True,
                  end_inclusive=False):
         self.range = range or []
         self.start_inclusive = start_inclusive
         self.end_inclusive = end_inclusive
-        super(Timedelta, self).__init__(id, table, name=name)
+        super(Timedelta, self).__init__(id, table)
 
     def to_data_description(self):
         description = super(Timedelta, self).to_data_description()

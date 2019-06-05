@@ -3,6 +3,8 @@ import pandas as pd
 from tableset import TableSet
 from collections import defaultdict
 import column_types as ctypes
+from pyspark.sql.functions import *
+import time
 
 
 def dfs(tables=None,
@@ -55,7 +57,7 @@ def dfs(tables=None,
     '''
     if not isinstance(tableset, TableSet):
         tableset = TableSet("dfs", tables, relationships)
-
+    start=time.time()
     dfs_object = DeepFeatureSynthesis(target_table, tableset,
                                       agg_primitives=agg_primitives,
                                       max_depth=max_depth,
@@ -63,6 +65,8 @@ def dfs(tables=None,
                                       ignore_tables=ignore_tables,
                                       ignore_columns=ignore_columns,
                                       max_features=max_features)
+    end=time.time()
+    print("DeepFeatureSynthesis:",end-start)
 
     return dfs_object.build_features(verbose=verbose)
 
@@ -172,8 +176,6 @@ class DeepFeatureSynthesis(object):
             if e not in self.ignore_tables:
                 all_features[e.id] = {}
 
-        self.where_clauses = defaultdict(set)
-
         self._run_dfs(self.ts[self.target_table_id], [],
                       all_features, max_depth=self.max_depth)
 
@@ -224,12 +226,15 @@ class DeepFeatureSynthesis(object):
         for r in backward:
             if self.allowed_paths and tuple(table_path + [r.child_table.id]) not in self.allowed_paths:
                 continue
+            start = time.time()
             self._build_agg_features(r=r,
                                      all_features=all_features,
                                      max_depth=max_depth)
+            end = time.time()
+            print(r.parent_table.id,r.child_table.id,end-start)
 
         """
-        Step 3 - Add idtable features
+        Step 3 - Add all features
         """
         self._add_all_features(all_features, table)
 
@@ -247,43 +252,44 @@ class DeepFeatureSynthesis(object):
                                             table=r.child_table,
                                             max_depth=new_max_depth,
                                             column_type=input_types)
-
+        print(r.parent_table.id,r.child_table.id,len(features))
         # remove features in relationship path
         relationship_path = self.ts.find_backward_path(r.parent_table.id, r.child_table.id)
 
         features = [f for f in features if not self._feature_in_relationship_path(relationship_path, f)]
         _local_data_stat_df = None
 
+        start = time.time()
         group_all = list()  
         group_all.append(r.child_column.id) 
+        features_prim = []
         for agg_prim in self.agg_primitives:
 
-            features_prim={f.id:agg_prim for f in features}
+            features_prim +=[agg_prim+"(\""+f.id+"\")" for f in features]
             
-            _tmp_stat_df = r.child_table.raw_data.groupby(group_all).agg(features_prim)
-            print(_tmp_stat_df.toPandas())
-            # join df one by one
-            if _local_data_stat_df is None:
-                _local_data_stat_df = _tmp_stat_df
-            else:
-                _local_data_stat_df = _local_data_stat_df.join(_tmp_stat_df, group_all, how='left_outer')
+        _local_data_stat_df = r.child_table.raw_data.groupby(group_all).agg(*[eval(f) for f  in features_prim])
+        end =time.time()
 
+        print(r.parent_table.id,r.child_table.id,"agg_features:",end-start)
+
+        start = time.time()
         for column in _local_data_stat_df.columns:
             if column in group_all:
                 continue
-            index=column.find('(')
-            new_column = column[:index+1]+r.child_table.id+'_'+column[index+1:]
-            _local_data_stat_df = _local_data_stat_df.withColumnRenamed(column,new_column)
-
-            _c = ctypes.Numeric(new_column, r.parent_table)
-            all_features[r.parent_table.id][new_column] = _c
+            _c = ctypes.Numeric(column, r.parent_table)
+            all_features[r.parent_table.id][column] = _c
             r.parent_table.columns += [_c]
+        end =time.time()
+        print(r.parent_table.id,r.child_table.id,"rename:",end-start)
 
+        start = time.time()
         r.parent_table.raw_data = r.parent_table.raw_data.join(_local_data_stat_df,\
             r.parent_table.raw_data[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
 
         for col in group_all:
             r.parent_table.raw_data = r.parent_table.raw_data.drop(_local_data_stat_df[col])
+        end =time.time()
+        print(r.parent_table.id,r.child_table.id,"join parent table:",end-start)
 
     def _add_all_features(self, all_features, table):
         """add all columns from the given table into features
