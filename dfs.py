@@ -3,7 +3,7 @@ import pandas as pd
 from tableset import TableSet
 from collections import defaultdict
 import column_types as ctypes
-from pyspark.sql import SparkSession
+
 
 def dfs(tables=None,
         relationships=None,
@@ -14,16 +14,10 @@ def dfs(tables=None,
         max_depth=2,
         ignore_tables=None,
         ignore_columns=None,
-        where_primitives=None,
         max_features=-1,
-        save_progress=None,
-        features_only=False,
-        verbose=False,
-        return_column_types=None,
-        context=None):
-    '''Calculates a feature matrix and features given a dictionary of tables
+        verbose=False):
+    '''Calculates features given a dictionary of tables
     and a list of relationships.
-
 
     Args:
         tables (dict[str -> tuple(pyspark.sql.DataFrame, str, str)]): Dictionary of
@@ -39,10 +33,10 @@ def dfs(tables=None,
 
         target_table (str): Table id of table on which to make predictions.
 
-        agg_primitives (list[str or AggregationPrimitive], optional): List of Aggregation
+        agg_primitives (list[str], optional): List of Aggregation
             Feature types to apply.
 
-                Default: ["sum", "std", "max", "skew", "min", "mean", "count", "percent_true", "n_unique", "mode"]
+                Default: ['avg','count','kurtosis','skewness','stddev','min','max','sum']
 
         allowed_paths (list[list[str]]): Allowed table paths on which to make
             features.
@@ -55,49 +49,22 @@ def dfs(tables=None,
         ignore_columns (dict[str -> list[str]], optional): List of specific
             columns within each table to blacklist when creating features.
 
-        where_primitives (list[str or PrimitiveBase], optional):
-            List of Primitives names (or types) to apply with where clauses.
-
-                Default:
-
-                    ["count"]
-
-        max_features (int, optional) : Cap the number of generated features to
+        max_features (int, optional) : Limit the number of generated features to
                 this number. If -1, no limit.
-
-        features_only (bool, optional): If True, returns the list of
-            features without calculating the feature matrix.
-
-        save_progress (str, optional): Path to save intermediate computational results.
-
-        return_column_types (list[Column] or str, optional): Types of
-                columns to return. If None, default to
-                Numeric, Discrete, and Boolean. If given as
-                the string 'all', use all available column types.
-        context [SparkSession]:the context of Spark 
 
     '''
     if not isinstance(tableset, TableSet):
         tableset = TableSet("dfs", tables, relationships)
 
-    if context is None:
-        context = SparkSession \
-            .builder \
-            .appName("dfs") \
-            .enableHiveSupport()\
-            .getOrCreate()
-
     dfs_object = DeepFeatureSynthesis(target_table, tableset,
                                       agg_primitives=agg_primitives,
                                       max_depth=max_depth,
-                                      where_primitives=where_primitives,
                                       allowed_paths=allowed_paths,
                                       ignore_tables=ignore_tables,
                                       ignore_columns=ignore_columns,
-                                      max_features=max_features,
-                                      context = context)
+                                      max_features=max_features)
 
-    return dfs_object.build_features(verbose=verbose, return_column_types=return_column_types)
+    return dfs_object.build_features(verbose=verbose)
 
 class DeepFeatureSynthesis(object):
     """Automatically produce features for a target table in an Tableset.
@@ -107,22 +74,15 @@ class DeepFeatureSynthesis(object):
 
             tableset (TableSet): Tableset for which to build features.
 
-            agg_primitives (list[str or :class:`.primitives.`], optional):
+            agg_primitives (list[str], optional):
                 list of Aggregation Feature types to apply.
 
-                Default: ["sum", "std", "max", "skew", "min", "mean", "count", "percent_true", "num_unique", "mode"]
-
-            where_primitives (list[str or :class:`.primitives.PrimitiveBase`], optional):
-                only add where clauses to these types of Primitives
-
-                Default:
-
-                    ["count"]
+                Default: ['avg','count','kurtosis','skewness','stddev','min','max','sum']
 
             max_depth (int, optional) : maximum allowed depth of features.
                 Default: 2. If -1, no limit.
 
-            max_features (int, optional) : Cap the number of generated features to
+            max_features (int, optional) : Limit the number of generated features to
                 this number. If -1, no limit.
 
             allowed_paths (list[list[str]], optional): Allowed table paths to make
@@ -134,33 +94,22 @@ class DeepFeatureSynthesis(object):
             ignore_columns (dict[str -> list[str]], optional): List of specific
                 columns within each table to blacklist when creating features.
                 If None, use all columns.
-
-            context [SparkSession]:the context of Spark 
         """
 
     def __init__(self,
                 target_table_id,
                 tableset,
                 agg_primitives=None,
-                where_primitives=None,
                 max_depth=2,
                 max_features=-1,
                 allowed_paths=None,
                 ignore_tables=None,
-                ignore_columns=None,
-                context=None):
+                ignore_columns=None):
 
         if target_table_id not in tableset.table_dict:
             ts_name = tableset.id or 'table set'
             msg = 'Provided target table %s does not exist in %s' % (target_table_id, ts_name)
             raise KeyError(msg)
-        if context is None:
-            context = SparkSession \
-                .builder \
-                .appName("dfs") \
-                .enableHiveSupport()\
-                .getOrCreate()
-        self.context = context
 
         # need to change max_depth to None because DFs terminates when  <0
         if max_depth == -1:
@@ -194,21 +143,12 @@ class DeepFeatureSynthesis(object):
         if agg_primitives is None:
             agg_primitives = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
         self.agg_primitives = []
-        agg_prim_dict = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
+        agg_prim_default = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
         for a in agg_primitives:
             if isinstance(a,str):
-                if a.lower() not in agg_prim_dict:
+                if a.lower() not in agg_prim_default:
                     raise ValueError("Unknown aggregation primitive {}. ".format(a))
             self.agg_primitives.append(a.lower())
-
-        if where_primitives is None:
-            where_primitives = ['count']
-        self.where_primitives = []
-        for p in where_primitives:
-            if isinstance(p,str):
-                if p.lower() not in agg_prim_dict:
-                    raise ValueError("Unknown aggregation primitive {}. ".format(p))
-            self.where_primitives.append(p)
     
     def build_features(self, return_column_types=None, verbose=False):
         """Automatically builds feature definitions for target
@@ -237,7 +177,7 @@ class DeepFeatureSynthesis(object):
         self._run_dfs(self.ts[self.target_table_id], [],
                       all_features, max_depth=self.max_depth)
 
-        return all_features
+        return self.ts[self.target_table_id].raw_data
 
     
     def _run_dfs(self, table, table_path, all_features, max_depth):
@@ -332,7 +272,7 @@ class DeepFeatureSynthesis(object):
             if column in group_all:
                 continue
             index=column.find('(')
-            new_column = column[:index+1]+r.child_table.id+'.'+column[index+1:]
+            new_column = column[:index+1]+r.child_table.id+'_'+column[index+1:]
             _local_data_stat_df = _local_data_stat_df.withColumnRenamed(column,new_column)
 
             _c = ctypes.Numeric(new_column, r.parent_table)

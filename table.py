@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pandas.api.types as pdtypes
 from pyspark.sql import DataFrame
+from pyspark.sql.window import Window
+from pyspark.sql.functions import row_number,col
 
 import column_types as ctypes
 
@@ -44,20 +46,18 @@ class Table(object):
             assert cnt>10,"the numbers of dataframe must be greater than 10"
             num_df = 10
         df = data.limit(num_df).toPandas()
-        self.df = df
-        _validate_table_params(id, df)
-
-        created_index, index, df = _create_index(index, make_index, df)
+        self._validate_table_params(id, df)
 
         self.id = id
         self.tableset = tableset
-        self.created_index = created_index
         self._verbose = verbose
         self.raw_data = data
 
+        self.df = self._create_index(index, make_index, df)
+
         self._create_columns(column_types, index)
 
-        self.df = df[[c.id for c in self.columns]]
+        self.df = self.df[[c.id for c in self.columns]]
         self.set_index(index,False)
 
     def set_index(self, column_id, unique=True):
@@ -232,41 +232,46 @@ class Table(object):
         '''Shape of the entity's dataframe'''
         return (self.raw_data.count(),len(self.columns))
 
-def _validate_table_params(id, df):
-    '''Validation checks for Table inputs'''
-    assert isinstance(id,str), "Table id must be a string"
-    assert len(df.columns) == len(set(df.columns)), "Duplicate column names"
-    for c in df.columns:
-        if not isinstance(c,str):
-            raise ValueError("All column names must be strings (Column {} "
-                             "is not a string)".format(c))
+    def _validate_table_params(self,id,df):
+        '''Validation checks for Table inputs'''
+        assert isinstance(id,str), "Table id must be a string"
+        assert len(df.columns) == len(set(df.columns)), "Duplicate column names"
+        for c in df.columns:
+            if not isinstance(c,str):
+                raise ValueError("All column names must be strings (Column {} "
+                                "is not a string)".format(c))
 
-def _create_index(index, make_index, df):
-    '''Handles index creation logic base on user input'''
-    created_index = None
+    def _create_index(self,index, make_index, df):
+        '''Handles index creation logic base on user input'''
 
-    if index is None:
-        # Case 1: user wanted to make index but did not specify column name
-        assert not make_index, "Must specify an index name if make_index is True"
-        # Case 2: make_index not specified but no index supplied, use first column
-        logger.warning(("Using first column as index. ",
-                        "To change this, specify the index parameter"))
-        index = df.columns[0]
-    elif make_index and index in df.columns:
-        # Case 3: user wanted to make index but column already exists
-        raise RuntimeError("Cannot make index: index column already present")
-    elif index not in df.columns:
-        if not make_index:
-            # Case 4: user names index, it is not in df. does not specify
-            # make_index.  Make new index column and warn
-            logger.warning("index %s not found in dataframe, creating new "
-                           "integer column", index)
-        # Case 5: make_index with no errors or warnings
-        # (Case 4 also uses this code path)
-        df.insert(0, index, range(0, len(df)))
-        created_index = index
-    # Case 6: user specified index, which is already in df. No action needed.
-    return created_index, index, df
+
+        if index is None:
+            # Case 1: user wanted to make index but did not specify column name
+            assert not make_index, "Must specify an index name if make_index is True"
+            # Case 2: make_index not specified but no index supplied, use first column
+            logger.warning(("Using first column as index. ",
+                            "To change this, specify the index parameter"))
+            index = df.columns[0]
+        elif make_index and index in df.columns:
+            # Case 3: user wanted to make index but column already exists
+            raise RuntimeError("Cannot make index: index column already present")
+        elif index not in df.columns:
+            if not make_index:
+                # Case 4: user names index, it is not in df. does not specify
+                # make_index.  Make new index column and warn
+                logger.warning("index %s not found in dataframe, creating new "
+                            "integer column", index)
+            # Case 5: make_index with no errors or warnings
+            # (Case 4 also uses this code path)
+            df.insert(0, index, range(0, len(df)))
+
+            rank_window = Window().orderBy(col(self.raw_data.columns[0]))
+            new_add_col = row_number().over(rank_window)
+
+            self.raw_data = self.raw_data.withColumn(index,new_add_col-1)
+
+        # Case 6: user specified index, which is already in df. No action needed.
+        return  df
 
 if __name__ == "__main__":
     logger.warning("ssssssssss")
