@@ -4,8 +4,11 @@ from tableset import TableSet
 from collections import defaultdict
 import column_types as ctypes
 from pyspark.sql.functions import *
-import time
+import time,logging
 
+logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
+logger = logging.getLogger('featuretoolsOnSpark')
+logger.setLevel(20)
 
 def dfs(tables=None,
         relationships=None,
@@ -16,7 +19,7 @@ def dfs(tables=None,
         max_depth=2,
         ignore_tables=None,
         ignore_columns=None,
-        max_features=-1,
+        max_features=None,
         verbose=False):
     '''Calculates features given a dictionary of tables
     and a list of relationships.
@@ -66,7 +69,7 @@ def dfs(tables=None,
                                       ignore_columns=ignore_columns,
                                       max_features=max_features)
     end=time.time()
-    print("DeepFeatureSynthesis:",end-start)
+    logger.info("DeepFeatureSynthesis:{:.3f}s".format(end-start))
 
     return dfs_object.build_features(verbose=verbose)
 
@@ -105,7 +108,7 @@ class DeepFeatureSynthesis(object):
                 tableset,
                 agg_primitives=None,
                 max_depth=2,
-                max_features=-1,
+                max_features=None,
                 allowed_paths=None,
                 ignore_tables=None,
                 ignore_columns=None):
@@ -116,10 +119,12 @@ class DeepFeatureSynthesis(object):
             raise KeyError(msg)
 
         # need to change max_depth to None because DFs terminates when  <0
-        if max_depth == -1:
-            max_depth = None
+        if max_depth is not None:
+            assert max_depth>0,"max_depth must be greater than 0"
         self.max_depth = max_depth
 
+        if max_features is not None:
+            assert max_features>0,"max_features must be greater than 0"
         self.max_features = max_features
 
         self.allowed_paths = allowed_paths
@@ -153,23 +158,18 @@ class DeepFeatureSynthesis(object):
                 if a.lower() not in agg_prim_default:
                     raise ValueError("Unknown aggregation primitive {}. ".format(a))
             self.agg_primitives.append(a.lower())
+
+        logger.info(("agg_primitives:",self.agg_primitives))
     
-    def build_features(self, return_column_types=None, verbose=False):
+    def build_features(self, verbose=False):
         """Automatically builds feature definitions for target
             table using Deep Feature Synthesis algorithm
 
         Args:
-            return_column_types (list[Column] or str, optional): Types of
-                columns to return. If None, default to
-                Numeric, Discrete, and Boolean. If given as
-                the string 'all', use all available column types.
-
             verbose (bool, optional): If True, print progress.
 
         Returns:
-            list[BaseFeature]: Returns a list of
-                features for target table, sorted by feature depth
-                (shallow first).
+            dataframe: return new dataframe of target table
         """
         all_features = {}
         for e in self.ts.tables:
@@ -179,7 +179,7 @@ class DeepFeatureSynthesis(object):
         self._run_dfs(self.ts[self.target_table_id], [],
                       all_features, max_depth=self.max_depth)
 
-        return self.ts[self.target_table_id].raw_data
+        return self.ts[self.target_table_id].df
 
     
     def _run_dfs(self, table, table_path, all_features, max_depth):
@@ -218,8 +218,6 @@ class DeepFeatureSynthesis(object):
         """
         Step 2 - Create agg_feat features for all deep backward relationships
         """
-
-        print("rfeat",backward_tables,table_path,table.id)
         backward = [r for r in self.ts.get_backward_relationships(table.id)
                    if r.child_table.id in backward_tables and
                    r.child_table.id not in self.ignore_tables]
@@ -231,7 +229,7 @@ class DeepFeatureSynthesis(object):
                                      all_features=all_features,
                                      max_depth=max_depth)
             end = time.time()
-            print(r.parent_table.id,r.child_table.id,end-start)
+            logger.info(r.parent_table.id+" "+r.child_table.id+" build agg features time:{:.3f}s".format(end-start))
 
         """
         Step 3 - Add all features
@@ -252,13 +250,14 @@ class DeepFeatureSynthesis(object):
                                             table=r.child_table,
                                             max_depth=new_max_depth,
                                             column_type=input_types)
-        print(r.parent_table.id,r.child_table.id,len(features))
+
         # remove features in relationship path
-        relationship_path = self.ts.find_backward_path(r.parent_table.id, r.child_table.id)
+        relationship_path = self.ts.find_backward_path(self.target_table_id, r.child_table.id)
 
         features = [f for f in features if not self._feature_in_relationship_path(relationship_path, f)]
         _local_data_stat_df = None
 
+        logger.info(r.parent_table.id+" "+r.child_table.id+" select {} features.".format(len(features)))
         start = time.time()
         group_all = list()  
         group_all.append(r.child_column.id) 
@@ -267,10 +266,10 @@ class DeepFeatureSynthesis(object):
 
             features_prim +=[agg_prim+"(\""+f.id+"\")" for f in features]
             
-        _local_data_stat_df = r.child_table.raw_data.groupby(group_all).agg(*[eval(f) for f  in features_prim])
+        _local_data_stat_df = r.child_table.df.groupby(group_all).agg(*[eval(f) for f  in features_prim])
         end =time.time()
 
-        print(r.parent_table.id,r.child_table.id,"agg_features:",end-start)
+        logger.info(r.parent_table.id+" "+r.child_table.id+" agg_features time:{:.3f}s".format(end-start))
 
         start = time.time()
         for column in _local_data_stat_df.columns:
@@ -280,16 +279,16 @@ class DeepFeatureSynthesis(object):
             all_features[r.parent_table.id][column] = _c
             r.parent_table.columns += [_c]
         end =time.time()
-        print(r.parent_table.id,r.child_table.id,"rename:",end-start)
+        logger.info(r.parent_table.id+" "+r.child_table.id+" add columns time:{:.3f}s".format(end-start))
 
         start = time.time()
-        r.parent_table.raw_data = r.parent_table.raw_data.join(_local_data_stat_df,\
-            r.parent_table.raw_data[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
+        r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
+            r.parent_table.df[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
 
         for col in group_all:
-            r.parent_table.raw_data = r.parent_table.raw_data.drop(_local_data_stat_df[col])
+            r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[col])
         end =time.time()
-        print(r.parent_table.id,r.child_table.id,"join parent table:",end-start)
+        logger.info(r.parent_table.id+" "+r.child_table.id+" join parent table time:{:.3f}s".format(end-start))
 
     def _add_all_features(self, all_features, table):
         """add all columns from the given table into features
@@ -325,13 +324,7 @@ class DeepFeatureSynthesis(object):
     def _feature_in_relationship_path(self, relationship_path, feature):
 
         for relationship in relationship_path:
-            if relationship.child_table.id == feature.table.id and \
-               relationship.child_column.id == feature.id:
+            if  relationship.child_column.id == feature.id or relationship.parent_column.id == feature.id:
                 return True
-
-            if relationship.parent_table.id == feature.table.id and \
-               relationship.parent_column.id == feature.id:
-                return True
-
         return False
         

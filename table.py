@@ -4,31 +4,30 @@ from __future__ import absolute_import, division, print_function
 import logging
 import numpy as np
 import pandas as pd
-import pandas.api.types as pdtypes
 from pyspark.sql import DataFrame
 from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number,col
 
 import column_types as ctypes
 
-import logging
 import re
 from datetime import datetime
 
-logging.basicConfig(format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('featureflow')
+logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
+logger = logging.getLogger('featuretoolsOnSpark')
+logger.setLevel(20)
 
 class Table(object):
     """Represents a table in a tableset, and stores relevant metadata and data
 
     """
-    def __init__(self, id, data,tableset,num_df=None, column_types=None,
+    def __init__(self, id, df,tableset,num_df=None, column_types=None,
                  index=None, make_index=False,verbose=False):
         """ Create Table
 
         Args:
             id (str): Id of Table.
-            data (pyspark.sql.DataFrame): Dataframe providing the data for the Table.
+            df (pyspark.sql.DataFrame): Dataframe providing the data for the Table.
             num_df (int, optional): How many rows of pyspark.sql.DataFrame which are converted to pd.DataFrame.
                 Needed when data is the format of pyspark.sql.DataFrame.
             tableset (TableSet): Tableset for this Table.
@@ -39,26 +38,27 @@ class Table(object):
                 dataframe, and create a new column of that name using integers the (0, len(dataframe)).
                 Otherwise, assume index exists in dataframe.
         """
-        if num_df:
+        if num_df is not None:
             assert num_df>0,"num_df must be greater than 0"
+            assert num_df<=df.count(),"num_df must be less than row num of df"
         else:
-            cnt = data.count()
+            cnt = df.count()
             assert cnt>10,"the numbers of dataframe must be greater than 10"
             num_df = 10
-        df = data.limit(num_df).toPandas()
+
         self._validate_table_params(id, df)
 
         self.id = id
         self.tableset = tableset
         self._verbose = verbose
-        self.raw_data = data
+        self.df = df
+        self.num_df = num_df
 
-        self.df = self._create_index(index, make_index, df)
+        self._create_index(index, make_index)
 
         self._create_columns(column_types, index)
 
-        self.df = self.df[[c.id for c in self.columns]]
-        #self.convert_column_type(index, ctypes.Index)
+        logger.info("create table "+self.id)
     
     def _create_columns(self, column_types, index):
         """Extracts the columns from a dataframe
@@ -111,7 +111,10 @@ class Table(object):
                 to types (:class:`.Column`)
                 or (type, kwargs) to pass keyword arguments to the column.
         '''
-        df = self.df
+        if self.num_df*1.0/self.df.count()>=0.0001:
+            df = self.df.limit(self.num_df*1.0/self.df.count()).toPandas()
+        else:
+            df = self.df.limit(self.num_df).toPandas()
         inferred_types = {}
         inferred_type = None
         for column in df.columns:
@@ -119,7 +122,7 @@ class Table(object):
                 continue
             else:
                 if len(df[column].dropna())==0:
-                    col = self.raw_data.select(column).toPandas()[column]
+                    col = self.df.select(column).toPandas()[column]
                 else:
                     col=df[column]
                 col = col.dropna()
@@ -191,7 +194,7 @@ class Table(object):
         Returns:
             :[str]: ids of column.
         """
-        return [column.id for column in self.columns ]
+        return [column.id for column in self.columns]
 
     def _get_column_index(self, column_id):
         """Get column index in self.columns
@@ -223,13 +226,14 @@ class Table(object):
         # replace the old column with the new one, maintaining order
         column = self._get_column(column_id)
         new_column = new_type.create_from(column)
-        self.columns[self.columns.index(column)] = new_column
+        self.columns[self._get_column_index(column_id)] = new_column
 
     def convert_column_id(self,column_id,new_id):
         
-        self.raw_data = self.raw_data.withColumnRenamed(column_id,new_id)
+        self.df = self.df.withColumnRenamed(column_id,new_id)
 
         index = self._get_column_index(column_id)
+
         column = self._get_column(column_id)
         column.id = new_id
         self.columns[index] = column
@@ -253,7 +257,7 @@ class Table(object):
     @property
     def shape(self):
         '''Shape of the entity's dataframe'''
-        return (self.raw_data.count(),len(self.columns))
+        return (self.df.count(),len(self.columns))
 
     def _validate_table_params(self,id,df):
         '''Validation checks for Table inputs'''
@@ -264,7 +268,7 @@ class Table(object):
                 raise ValueError("All column names must be strings (Column {} "
                                 "is not a string)".format(c))
 
-    def _create_index(self,index, make_index, df):
+    def _create_index(self,index, make_index):
         '''Handles index creation logic base on user input'''
 
 
@@ -274,11 +278,11 @@ class Table(object):
             # Case 2: make_index not specified but no index supplied, use first column
             logger.warning(("Using first column as index. ",
                             "To change this, specify the index parameter"))
-            index = df.columns[0]
-        elif make_index and index in df.columns:
+            index = self.df.columns[0]
+        elif make_index and index in self.df.columns:
             # Case 3: user wanted to make index but column already exists
             raise RuntimeError("Cannot make index: index column already present")
-        elif index not in df.columns:
+        elif index not in self.df.columns:
             if not make_index:
                 # Case 4: user names index, it is not in df. does not specify
                 # make_index.  Make new index column and warn
@@ -286,17 +290,14 @@ class Table(object):
                             "integer column", index)
             # Case 5: make_index with no errors or warnings
             # (Case 4 also uses this code path)
-            df.insert(0, index, range(0, len(df)))
 
-            rank_window = Window().orderBy(col(self.raw_data.columns[0]))
+            rank_window = Window().orderBy(col(self.df.columns[0]))
             new_add_col = row_number().over(rank_window)
 
-            self.raw_data = self.raw_data.withColumn(index,new_add_col-1)
+            self.df = self.df.withColumn(index,new_add_col-1)
 
         # Case 6: user specified index, which is already in df. No action needed.
         self.index=index
-        return  df
 
 if __name__ == "__main__":
-    logger.warning("ssssssssss")
-    print("sss")
+    tbale=Table()

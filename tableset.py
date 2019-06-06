@@ -1,14 +1,14 @@
 import logging
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_dtype_equal
 
 import column_types as ctypes
 from table import Table
 from relationship import Relationship
 
-logging.basicConfig(format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('featureflow')
+logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
+logger = logging.getLogger('featuretoolsOnSpark')
+logger.setLevel(20)
 
 class TableSet(object):
     """
@@ -18,14 +18,10 @@ class TableSet(object):
         id
         table_dict
         relationships
-        time_type
-
-    Properties:
-        metadata
+        no_change_columns
 
     """
-
-    def __init__(self, id=None, tables=None, relationships=None):
+    def __init__(self, id=None, tables=None, relationships=None, no_change_columns=None):
         """Creates TableSet
 
             Args:
@@ -34,29 +30,21 @@ class TableSet(object):
                 tables (dict[str -> tuple(pyspark.sql.DataFrame, str, str)]): Dictionary of
                     tables. Entries take the format
                     {table id -> (dataframe, id column, (column_types))}.
-                    Note that time_column and column_types are optional.
+                    Note that column_types are optional.
 
                 relationships (list[(str, str, str, str)]): List of relationships
                     between tables. List items are a tuple with the format
                     (parent table id, parent column, child table id, child column).
 
-            Example:
-
-                .. code-block:: python
-
-                    tables = {
-                        "cards" : (card_df, "id"),
-                        "transactions" : (transactions_df, "id", "transaction_time")
-                    }
-
-                    relationships = [("cards", "id", "transactions", "card_id")]
-
-                    ff.TableSet("my-table-set", tables, relationships)
+                no_change_columns([str]): ids of the columns that can't be changed even if there are duplication of id.
         """
-        self.id = id
+        self.id = id or "tableset"
         self.table_dict = {}
         self.relationships = []
 
+        logger.info("create tableset "+self.id)
+
+        self.no_change_columns = no_change_columns or []
         tables = tables or {}
         relationships = relationships or []
         for table in tables:
@@ -121,16 +109,12 @@ class TableSet(object):
 
         for k,v in self.table_dict.items():
             inters = set(v._get_column_ids()).intersection(set(table._get_column_ids()))
-            inters = [inter for inter in inters]
             if len(inters)>0:
-                print(k,table.id,inters)
-                for inter in inters[::-1]:
-                    print(inter,"1111111111111111111111111111111111111111111")
-                    v.convert_column_id(inter,k+'_'+inter)
-                    #self.table_dict[k] = v
 
-                    table.convert_column_id(inter,table.id+'_'+inter)
-                    print(v.columns,table.columns)
+                for inter in inters:
+                    if inter not in self.no_change_columns:
+                        v.convert_column_id(inter,k+'_'+inter)
+                        table.convert_column_id(inter,table.id+'_'+inter)
 
         self.table_dict[table.id] = table
 
@@ -203,8 +187,6 @@ class TableSet(object):
                 "Not adding duplicate relationship: %s", relationship)
             return self
 
-        # _operations?
-
         # this is a new pair of tables
         child_e = relationship.child_table
         child_v = relationship.child_column.id
@@ -218,14 +200,6 @@ class TableSet(object):
             parent_e.convert_column_type(column_id=parent_v,
                                            new_type=ctypes.Index)
 
-        parent_dtype = parent_e.df[parent_v].dtype
-        child_dtype = child_e.df[child_v].dtype
-        msg = u"Unable to add relationship because {} in {} is Pandas dtype {}"\
-            u" and {} in {} is Pandas dtype {}."
-        if not is_dtype_equal(parent_dtype, child_dtype):
-            raise ValueError(msg.format(parent_v, parent_e.id, parent_dtype,
-                                        child_v, child_e.id, child_dtype))
-
         self.relationships.append(relationship)
         return self
 
@@ -234,22 +208,12 @@ class TableSet(object):
 
         Args:
             table_id (str) - Id table of table to search from.
-            deep (bool) - If True, recursively find backward tables.
 
         Returns:
             Set of each :class:`.Table` in a backward relationship.
         """
-        children = [r.child_table.id for r in
-                    self.get_backward_relationships(table_id)]
-        if deep:
-            children_deep = set([])
-            for p in children:
-                children_deep.add(p)
-                to_add = self.get_backward_tables(p, deep=True)
-                children_deep = children_deep.union(to_add)
-
-            children = children_deep
-        return set(children)
+        return set([r.child_table.id for r in
+                    self.get_backward_relationships(table_id)])
 
     def get_backward_relationships(self, table_id):
         """
@@ -268,30 +232,14 @@ class TableSet(object):
 
         Args:
             table_id (str) - Id table of table to search from.
-            deep (bool) - if True, recursively find forward tables.
 
         Returns:
             Set of table IDs in a forward relationship with the passed in
             table.
         """
-        parents = [r.parent_table.id for r in
-                   self.get_forward_relationships(table_id)]
+        return set([r.parent_table.id for r in
+                   self.get_forward_relationships(table_id)])
 
-        if deep:
-            parents_deep = set([])
-            for p in parents:
-                parents_deep.add(p)
-
-                # no loops that are typically caused by one to one relationships
-                if table_id in self.get_forward_tables(p):
-                    continue
-
-                to_add = self.get_forward_tables(p, deep=True)
-                parents_deep = parents_deep.union(to_add)
-
-            parents = parents_deep
-
-        return set(parents)
 
     def get_forward_relationships(self, table_id):
         """Get relationships where table "table_id" is the child
@@ -343,3 +291,5 @@ class TableSet(object):
                 return [r] + new_path
 
         return None
+if __name__ == "__main__":
+    tableset=TableSet("id")

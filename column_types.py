@@ -12,7 +12,6 @@ class Column(object):
     
     """
     type_string = None
-    _default_dtype = object
 
     def __init__(self, id, table):
         assert isinstance(id,str), "Column id must be a string"
@@ -31,7 +30,7 @@ class Column(object):
             self.id == other.id and self.table_id == other.table_id
     
     def __repr__(self):
-        ret = u"<Column: {} (dtype = {})>".format(self.id, self.type_string)
+        ret = u"<Column: {} (dtype = {}, table = {})>".format(self.id, self.type_string,self.table_id)
 
         # encode for python 2
         if type(ret) != str:
@@ -66,22 +65,6 @@ class Column(object):
     def interesting_values(self, interesting_values):
         self._interesting_values = interesting_values
 
-    @property
-    def series(self):
-        return self.table.df[self.id]
-
-    def to_data_description(self):
-        return {
-            'id': self.id,
-            'type': {
-                'value': self.type_string,
-            },
-            'properties': {
-                'table': self.table.id,
-                'interesting_values': self._interesting_values
-            },
-        }
-
 class Unknown(Column):
     pass
 
@@ -106,33 +89,10 @@ class Discrete(Column):
                                     if not (v in seen or seen_add(v))]
 
 class Boolean(Column):
-    """Represents Columns that take on one of two values
-
-    Args:
-        true_values (list) : List of valued true values. Defaults to [1, True, "true", "True", "yes", "t", "T"]
-        false_values (list): List of valued false values. Defaults to [0, False, "false", "False", "no", "f", "F"]
+    """
+    Represents Columns that take on one of two values
     """
     type_string = "boolean"
-    _default_pandas_dtype = bool
-
-    def __init__(self,
-                 id,
-                 table,
-                 true_values=None,
-                 false_values=None):
-        default = [1, True, "true", "True", "yes", "t", "T"]
-        self.true_values = true_values or default
-        default = [0, False, "false", "False", "no", "f", "F"]
-        self.false_values = false_values or default
-        super(Boolean, self).__init__(id, table)
-
-    def to_data_description(self):
-        description = super(Boolean, self).to_data_description()
-        description['type'].update({
-            'true_values': self.true_values,
-            'false_values': self.false_values
-        })
-        return description
 
 
 class Categorical(Discrete):
@@ -147,60 +107,21 @@ class Categorical(Discrete):
         self.categories = None or []
         super(Categorical, self).__init__(id, table)
 
-    def to_data_description(self):
-        description = super(Categorical, self).to_data_description()
-        description['type'].update({'categories': self.categories})
-        return description
-
 
 class Id(Categorical):
     """Represents Columns that identify another table"""
     type_string = "id"
-    _default_pandas_dtype = int
 
 
 class Ordinal(Discrete):
     """Represents Columns that take on an ordered discrete value"""
     type_string = "ordinal"
-    _default_pandas_dtype = int
 
 
 class Numeric(Column):
     """Represents Columns that contain numeric values
-
-    Args:
-        range (list, optional) : List of start and end. Can use inf and -inf to represent infinity. Unconstrained if not specified.
-        start_inclusive (bool, optional) : Whether or not range includes the start value.
-        end_inclusive (bool, optional) : Whether or not range includes the end value
-
-    Attributes:
-        max (float)
-        min (float)
-        std (float)
-        mean (float)
     """
     type_string = "numeric"
-    _default_pandas_dtype = float
-
-    def __init__(self,
-                 id,
-                 table,
-                 range=None,
-                 start_inclusive=True,
-                 end_inclusive=False):
-        self.range = None or []
-        self.start_inclusive = start_inclusive
-        self.end_inclusive = end_inclusive
-        super(Numeric, self).__init__(id, table)
-
-    def to_data_description(self):
-        description = super(Numeric, self).to_data_description()
-        description['type'].update({
-            'range': self.range,
-            'start_inclusive': self.start_inclusive,
-            'end_inclusive': self.end_inclusive,
-        })
-        return description
 
 
 class Index(Column):
@@ -210,7 +131,6 @@ class Index(Column):
         count (int)
     """
     type_string = "index"
-    _default_pandas_dtype = int
 
 
 class Datetime(Column):
@@ -220,7 +140,6 @@ class Datetime(Column):
         format (str): Python datetime format string documented `here <http://strftime.org/>`_.
     """
     type_string = "datetime"
-    _default_pandas_dtype = np.datetime64
 
     def __init__(self, id, table, format=None):
         self.format = format
@@ -234,29 +153,6 @@ class Datetime(Column):
             ret = ret.encode("utf-8")
 
         return ret
-
-    def to_data_description(self):
-        description = super(Datetime, self).to_data_description()
-        description['type'].update({'format': self.format})
-        return description
-
-
-class TimeIndex(Column):
-    """Represents time index of table"""
-    type_string = "time_index"
-    _default_pandas_dtype = np.datetime64
-
-
-class NumericTimeIndex(TimeIndex, Numeric):
-    """Represents time index of table that is numeric"""
-    type_string = "numeric_time_index"
-    _default_pandas_dtype = float
-
-
-class DatetimeTimeIndex(TimeIndex, Datetime):
-    """Represents time index of table that is a datetime"""
-    type_string = "datetime_time_index"
-    _default_pandas_dtype = np.datetime64
 
 
 class Timedelta(Column):
@@ -280,15 +176,6 @@ class Timedelta(Column):
         self.start_inclusive = start_inclusive
         self.end_inclusive = end_inclusive
         super(Timedelta, self).__init__(id, table)
-
-    def to_data_description(self):
-        description = super(Timedelta, self).to_data_description()
-        description['type'].update({
-            'range': self.range,
-            'start_inclusive': self.start_inclusive,
-            'end_inclusive': self.end_inclusive,
-        })
-        return description
 
 
 class Text(Column):
