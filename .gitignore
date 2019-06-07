@@ -1,3 +1,6 @@
 *.py[cod]
 .vscode
 test
+build
+dist
+featuretoolsOnSpark.egg-info

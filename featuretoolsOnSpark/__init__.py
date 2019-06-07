@@ -1,9 +1,11 @@
 from __future__ import print_function,absolute_import
-from table import *
-from dfs import *
-from tableset import *
-from column_types import *
-from relationship import *
+
+from featuretoolsOnSpark.tableset import *
+from featuretoolsOnSpark.table import *
+from featuretoolsOnSpark.column_types import *
+from featuretoolsOnSpark.relationship import *
+from featuretoolsOnSpark.dfs import *
+from featuretoolsOnSpark.version import __version__
 
 agg_prim_default = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
 

@@ -8,7 +8,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number,col
 
-import column_types as ctypes
+import featuretoolsOnSpark.column_types as ctypes
 
 import re
 from datetime import datetime

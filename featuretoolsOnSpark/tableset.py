@@ -2,9 +2,9 @@ import logging
 import numpy as np
 import pandas as pd
 
-import column_types as ctypes
-from table import Table
-from relationship import Relationship
+import featuretoolsOnSpark.column_types as ctypes
+from featuretoolsOnSpark.table import Table
+from featuretoolsOnSpark.relationship import Relationship
 
 logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
 logger = logging.getLogger('featuretoolsOnSpark')
