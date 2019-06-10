@@ -8,7 +8,7 @@ with open(path.join(dirname, 'README.md')) as f:
 
 setup(
     name='featuretoolsOnSpark',
-    version='0.1.0',
+    version='0.1.1',
     packages=find_packages(),
     description='A simplified version of featuretools for Spark',
     license='MIT',
@@ -24,6 +24,7 @@ setup(
          'Programming Language :: Python :: 3.6',
          'Programming Language :: Python :: 3.7'
     ],
+    install_requires=open('requirements.txt').readlines(),
     python_requires='>=2.7, <4',
     keywords='feature engineering data science machine learning',
     include_package_data=True,
