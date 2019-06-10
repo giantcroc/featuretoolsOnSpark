@@ -127,10 +127,10 @@ class Table(object):
                 continue
             else:
                 if len(df[column].dropna())==0:
-                    col = self.df.select(column).toPandas()[column]
+                    col = self.df.select(column).dropna().limit(self.num_df).toPandas()[column]
                 else:
-                    col=df[column]
-                col = col.dropna()
+                    col = df[column]
+                col = col.dropna().reset_index(drop=True)
                 if len(col)==0:
                     continue
                 elif col.dtype == "object":
@@ -163,6 +163,7 @@ class Table(object):
             col = col.astype(str)
         # re match two patterns:1.2013[-/]04[-/]29 2.2013[-/]04[-/]29 03:04:30
         if col.dtype.name.find('str') > -1 or col.dtype.name.find('object') > -1:
+            #print(col[0])
             pattern1 = r"\d{4}[-/]?\d{2}[-/]?\d{2}"
             pattern2 = r"\d{4}[-/]?d{2}[-/]?d{2}\s\d{2}:\d{2}:\d{2}"
             if re.match(pattern1,col[0])!=None or re.match(pattern2,col[0])!=None:

@@ -66,7 +66,8 @@ def dfs(tableset=None,
     end=time.time()
     logger.info("DeepFeatureSynthesis:{:.3f}s".format(end-start))
 
-    return dfs_object.build_features(verbose=verbose)
+    dfs_object.build_features(verbose=verbose)
+
 
 class DeepFeatureSynthesis(object):
     """Automatically produce features for a target table in an Tableset.
@@ -173,7 +174,21 @@ class DeepFeatureSynthesis(object):
 
         self._run_dfs(self.ts[self.target_table_id], [], all_features, max_depth=self.max_depth)
 
-        return self.ts[self.target_table_id].df
+        start = time.time()
+        new_cols = []
+        for col in self.ts[self.target_table_id].df.columns:
+            if col.find('(') > -1:
+                new_col = col.replace('(','_')
+                new_col = new_col.replace(')','')
+            else:
+                new_col = col
+            new_cols.append(new_col)
+        rename_expr = [" `"+i+"`"+" as "+"`"+j+"` " for i, j in zip(self.ts[self.target_table_id].df.columns, new_cols)]
+        self.ts[self.target_table_id].df = self.ts[self.target_table_id].df.selectExpr(rename_expr)
+
+        end = time.time()
+        logger.info(" change features time:{:.3f}s".format(end-start))
+        #return self.ts[self.target_table_id].df
 
     
     def _run_dfs(self, table, table_path, all_features, max_depth):
