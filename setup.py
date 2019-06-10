@@ -12,9 +12,11 @@ setup(
     packages=find_packages(),
     description='A simplified version of featuretools for Spark',
     license='MIT',
+    url='https://github.com/giantcroc/featuretoolsOnSpark',
     author='giantcroc',
+    author_email='1204449533@qq.com',
     classifiers=[
-         'Development Status :: 1 - Alpha',
+         'Development Status :: 2 - Pre-Alpha',
          'Intended Audience :: Developers',
          'Programming Language :: Python :: 2.7',
          'Programming Language :: Python :: 3',

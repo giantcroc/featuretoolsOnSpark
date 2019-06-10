@@ -20,23 +20,19 @@ class TableSet(object):
         relationships
         no_change_columns
 
+    Example:
+    for Kaggle Competition Home Credit Default Risk Dataset(https://www.kaggle.com/c/home-credit-default-risk/data)
+
+        ts = fts.TableSet("home_credit",no_change_columns=["SK_ID_PREV","SK_ID_CURR","SK_ID_BUREAU"])
+
     """
-    def __init__(self, id=None, tables=None, relationships=None, no_change_columns=None):
+    def __init__(self, id=None, no_change_columns=None):
         """Creates TableSet
 
             Args:
                 id (str) : Unique identifier to associate with this instance
 
-                tables (dict[str -> tuple(pyspark.sql.DataFrame, str, str)]): Dictionary of
-                    tables. Entries take the format
-                    {table id -> (dataframe, id column, (column_types))}.
-                    Note that column_types are optional.
-
-                relationships (list[(str, str, str, str)]): List of relationships
-                    between tables. List items are a tuple with the format
-                    (parent table id, parent column, child table id, child column).
-
-                no_change_columns([str]): ids of the columns that can't be changed even if there are duplication of id.
+                no_change_columns([str]): ids of the columns that can't be changed even if there are duplication of ids.
         """
         self.id = id or "tableset"
         self.table_dict = {}
@@ -45,24 +41,6 @@ class TableSet(object):
         logger.info("create tableset "+self.id)
 
         self.no_change_columns = no_change_columns or []
-        tables = tables or {}
-        relationships = relationships or []
-        for table in tables:
-            df = tables[table][0]
-            index_column = tables[table][1]
-            column_types = None
-            if len(tables[table]) > 2:
-                column_types = tables[table][2]
-            self.table_from_dataframe(table_id=table,
-                                       dataframe=df,
-                                       index=index_column,
-                                       column_types=column_types)
-
-        for relationship in relationships:
-            parent_column = self[relationship[0]][relationship[1]]
-            child_column = self[relationship[2]][relationship[3]]
-            self.add_relationship(Relationship(parent_column,
-                                               child_column))
     
     def table_from_dataframe(self,
                               table_id,
@@ -96,6 +74,20 @@ class TableSet(object):
         Notes:
 
             Will infer column types from Pandas dtype
+
+        Example:
+        for Kaggle Competition Home Credit Default Risk Dataset(https://www.kaggle.com/c/home-credit-default-risk/data)
+
+            spark = SparkSession 
+                        .builder 
+                        .appName("Example") 
+                        .enableHiveSupport()
+                        .getOrCreate()
+
+            application_train = spark.sql(''' select * from home_credit.application_train ''')
+
+            ts.table_from_dataframe(table_id="app_train",dataframe=application_train,index='SK_ID_CURR')
+
         """
         column_types = column_types or {}
         table = Table(
@@ -107,10 +99,11 @@ class TableSet(object):
             index=index,
             make_index=make_index)
 
+        #solve the problem that there are duplication of column ids in different tbales
         for k,v in self.table_dict.items():
             inters = set(v._get_column_ids()).intersection(set(table._get_column_ids()))
-            if len(inters)>0:
 
+            if len(inters)>0:
                 for inter in inters:
                     if inter not in self.no_change_columns:
                         v.convert_column_id(inter,k+'_'+inter)
@@ -132,8 +125,7 @@ class TableSet(object):
             table_id (str): Id of table.
 
         Returns:
-            :class:`.Table` : Instance of table. None if table doesn't
-                exist.
+            :class:`.Table` : Instance of table. 
         """
         if table_id in self.table_dict:
             return self.table_dict[table_id]
@@ -291,5 +283,3 @@ class TableSet(object):
                 return [r] + new_path
 
         return None
-if __name__ == "__main__":
-    tableset=TableSet("id")

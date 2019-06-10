@@ -20,6 +20,14 @@ logger.setLevel(20)
 class Table(object):
     """Represents a table in a tableset, and stores relevant metadata and data
 
+    Attributes:
+        id
+        tableset
+        verbose
+        df
+        num_df
+        index
+
     """
     def __init__(self, id, df,tableset,num_df=None, column_types=None,
                  index=None, make_index=False,verbose=False):
@@ -50,29 +58,29 @@ class Table(object):
 
         self.id = id
         self.tableset = tableset
-        self._verbose = verbose
+        #todo verbose
+        self.verbose = verbose
         self.df = df
         self.num_df = num_df
 
         self._create_index(index, make_index)
 
-        self._create_columns(column_types, index)
+        self._create_columns(column_types)
 
         logger.info("create table "+self.id)
     
-    def _create_columns(self, column_types, index):
+    def _create_columns(self, column_types):
         """Extracts the columns from a dataframe
 
         Args:
             column_types (dict[str -> dict[str -> type]]) : A table's
                 column_types dict maps string column ids to types (:class:`.Column`)
                 or (type, kwargs) to pass keyword arguments to the Column.
-            index (str): Name of index column
         """
         columns = []
         column_types = column_types or {}
-        if index not in column_types:
-            column_types[index] = ctypes.Index
+        if self.index not in column_types:
+            column_types[self.index] = ctypes.Index
 
         link_cols = self.get_linked_cols()
         inferred_column_types = self.infer_column_types(link_cols,column_types)
@@ -87,9 +95,8 @@ class Table(object):
                 _c = inferred_column_types[c](c, self)
             columns += [_c]
         # make sure index is at the beginning
-        index_column = [c for c in columns
-                          if c.id == index][0]
-        self.columns = [index_column] + [c for c in columns if c.id != index]
+        index_column = [c for c in columns if c.id == self.index][0]
+        self.columns = [index_column] + [c for c in columns if c.id != self.index]
 
     def get_linked_cols(self):
         """Return a list with the table linked columns.
@@ -106,15 +113,13 @@ class Table(object):
         '''Infer column types from dataframe
 
         Args:
-            link_cols (list[]): Linked columns
+            link_cols (list[str]): Linked columns
             column_types (dict[str -> dict[str -> type]]) : A table's column_types dict maps string column ids 
                 to types (:class:`.Column`)
                 or (type, kwargs) to pass keyword arguments to the column.
         '''
-        if self.num_df*1.0/self.df.count()>=0.0001:
-            df = self.df.limit(self.num_df*1.0/self.df.count()).toPandas()
-        else:
-            df = self.df.limit(self.num_df).toPandas()
+        df = self.df.limit(self.num_df).toPandas()
+
         inferred_types = {}
         inferred_type = None
         for column in df.columns:
@@ -298,6 +303,3 @@ class Table(object):
 
         # Case 6: user specified index, which is already in df. No action needed.
         self.index=index
-
-if __name__ == "__main__":
-    tbale=Table()

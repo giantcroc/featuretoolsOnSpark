@@ -10,9 +10,7 @@ logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
 logger = logging.getLogger('featuretoolsOnSpark')
 logger.setLevel(20)
 
-def dfs(tables=None,
-        relationships=None,
-        tableset=None,
+def dfs(tableset=None,
         target_table=None,
         agg_primitives=None,
         allowed_paths=None,
@@ -21,17 +19,9 @@ def dfs(tables=None,
         ignore_columns=None,
         max_features=None,
         verbose=False):
-    '''Calculates features given a dictionary of tables
-    and a list of relationships.
+    '''Calculates features given a tableset.
 
     Args:
-        tables (dict[str -> tuple(pyspark.sql.DataFrame, str, str)]): Dictionary of
-            tables. Entries take the format
-            {table id -> (dataframe, id column)}.
-
-        relationships (list[(str, str, str, str)]): List of relationships
-            between tables. List items are a tuple with the format
-            (parent table id, parent column, child table id, child column).
 
         tableset (TableSet): An already initialized tableset. Required if
             tables and relationships are not defined.
@@ -57,9 +47,14 @@ def dfs(tables=None,
         max_features (int, optional) : Limit the number of generated features to
                 this number. If -1, no limit.
 
+        Example:
+        for Kaggle Competition Home Credit Default Risk Dataset(https://www.kaggle.com/c/home-credit-default-risk/data)
+
+            all_features=fts.dfs(tableset = ts, agg_primitives=["sum",'min','max','avg','stddev'],target_table = 'app_train',max_depth=2)
+
     '''
     if not isinstance(tableset, TableSet):
-        tableset = TableSet("dfs", tables, relationships)
+        tableset = TableSet("dfs")
     start=time.time()
     dfs_object = DeepFeatureSynthesis(target_table, tableset,
                                       agg_primitives=agg_primitives,
@@ -159,7 +154,7 @@ class DeepFeatureSynthesis(object):
                     raise ValueError("Unknown aggregation primitive {}. ".format(a))
             self.agg_primitives.append(a.lower())
 
-        logger.info(("agg_primitives:",self.agg_primitives))
+        logger.info(("using agg_primitives:",self.agg_primitives))
     
     def build_features(self, verbose=False):
         """Automatically builds feature definitions for target
@@ -176,8 +171,7 @@ class DeepFeatureSynthesis(object):
             if e not in self.ignore_tables:
                 all_features[e.id] = {}
 
-        self._run_dfs(self.ts[self.target_table_id], [],
-                      all_features, max_depth=self.max_depth)
+        self._run_dfs(self.ts[self.target_table_id], [], all_features, max_depth=self.max_depth)
 
         return self.ts[self.target_table_id].df
 
