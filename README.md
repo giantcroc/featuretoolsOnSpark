@@ -7,6 +7,11 @@ This repo is a simplified version of featuretools,using  automatic feature gener
 Install with pip
 
 	pip install featuretoolsOnSpark
+Install from source
+
+	git clone https://github.com/giantcroc/featuretoolsOnSpark.git
+	cd featuretoolsOnSpark
+	python setup.py install
 	
 ## Example
 Below is an example of how to use apis of this repo.We Choose the dataset from Kaggle's competition([Home-Credit-Default-Risk](https://www.kaggle.com/c/home-credit-default-risk/data)).The relationships between tables are shown in the picture below.
