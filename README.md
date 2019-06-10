@@ -9,7 +9,7 @@ Install with pip
 	pip install featuretoolsOnSpark
 Install from source
 
-	git clone git@github.com:giantcroc/featuretoolsOnSpark.git
+	git clone https://github.com/giantcroc/featuretoolsOnSpark.git
 	cd featuretoolsOnSpark
 	python setup.py install
 	
