@@ -9,11 +9,15 @@ Install with pip
 	pip install featuretoolsOnSpark
 	
 ## Example
-Below is an example of how to use apis of this repo.We Choose the dataset from Kaggle's competition([Home-Credit-Default-Risk](https://www.kaggle.com/c/home-credit-default-risk/data)).
+Below is an example of how to use apis of this repo.We Choose the dataset from Kaggle's competition([Home-Credit-Default-Risk](https://www.kaggle.com/c/home-credit-default-risk/data)).The relationships between tables are shown in the picture below.
 
-First,you should guarantee that all csv files needed have saved as [Spark DataFrame](http://spark.apache.org/docs/latest/api/python/pyspark.sql.html#pyspark.sql.DataFrame) format.
+<p align="center">
+<img src="https://storage.googleapis.com/kaggle-media/competitions/home-credit/home_credit.png" alt="featuretoolsOnSpark" />
+</p>
 
-### 1. Create Spark Context
+First,you should guarantee that all csv files needed have been saved as [Spark DataFrame](http://spark.apache.org/docs/latest/api/python/pyspark.sql.html#pyspark.sql.DataFrame) format.
+
+#### 1. Create Spark Context
 ```python
 >> from pyspark.sql import SparkSession
 
@@ -23,7 +27,7 @@ First,you should guarantee that all csv files needed have saved as [Spark DataFr
    	.enableHiveSupport()\
    	.getOrCreate()
 ```
-### 2. Get Spark DataFrame
+#### 2. Get Spark DataFrame
 ```python
 >> app_train = spark.sql(''' select * from home_credit.app_train ''')
 
@@ -39,13 +43,13 @@ First,you should guarantee that all csv files needed have saved as [Spark DataFr
 
 >> previous = spark.sql(''' select * from home_credit.previous ''')
 ```
-### 3. Create TableSet
+#### 3. Create TableSet
 ```python
 >> import featuretoolsOnSpark as fts
 
 >> ts = fts.TableSet("home_credit",no_change_columns=["SK_ID_PREV","SK_ID_CURR","SK_ID_BUREAU"])
 ```
-### 4. Create Tables From Spark DataFrame
+#### 4. Create Tables From Spark DataFrame
 ```python
 >> ts.table_from_dataframe(table_id="bureau_balance",dataframe=bureau_balance,index='bureau_balance_id',make_index = True)
 
@@ -61,7 +65,7 @@ First,you should guarantee that all csv files needed have saved as [Spark DataFr
 
 >> ts.table_from_dataframe(table_id="previous",dataframe=previous,index='SK_ID_PREV')
 ```
-### 5. Add Relationships of Tables
+#### 5. Add Relationships of Tables
 ```python
 >> re1 = Relationship(ts["app_train"]["SK_ID_CURR"],ts["bureau"]["SK_ID_CURR"])
 
@@ -77,7 +81,7 @@ First,you should guarantee that all csv files needed have saved as [Spark DataFr
 
 >> ts.add_relationships([re1,re2,re3,re4,re5,re6])
 ```
-### 6. Run DFS To Generate Features
+#### 6. Run DFS To Generate Features
 ```python
 new_app_train = fts.dfs(tableset = ts, agg_primitives=["sum",'min','max','avg'],target_table = 'app_train',max_depth=2)
 ```
