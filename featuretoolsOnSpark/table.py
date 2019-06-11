@@ -4,6 +4,7 @@ from __future__ import absolute_import, division, print_function
 import logging
 import numpy as np
 import pandas as pd
+import time
 from pyspark.sql import DataFrame
 from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number,col
@@ -11,7 +12,6 @@ from pyspark.sql.functions import row_number,col
 import featuretoolsOnSpark.column_types as ctypes
 
 import re
-from datetime import datetime
 
 logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
 logger = logging.getLogger('featuretoolsOnSpark')
@@ -27,6 +27,8 @@ class Table(object):
         df
         num_df
         index
+        old_len
+        columns
 
     """
     def __init__(self, id, df,tableset,num_df=None, column_types=None,
@@ -66,7 +68,6 @@ class Table(object):
 
         self.id = id
         self.tableset = tableset
-        #todo verbose
         self.verbose = verbose
         self.df = df
         self.num_df = num_df
@@ -133,6 +134,7 @@ class Table(object):
         inferred_types = {}
         inferred_type = None
         for column in df.columns:
+            column = column.encode("utf-8")
             if column in column_types:
                 continue
             else:
@@ -166,9 +168,6 @@ class Table(object):
         return inferred_types
 
     def col_is_datetime(self,col):
-        if (col.dtype.name.find('datetime') > -1 or
-                (len(col) and isinstance(col.iloc[0], datetime))):
-            return True
         if col.dtype.name.find('int32') > -1 or col.dtype.name.find('int64') > -1 or col.dtype.name.find('int16') > -1:
             col = col.astype(str)
         # re match two patterns:1.2013[-/]04[-/]29 2.2013[-/]04[-/]29 03:04:30

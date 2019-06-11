@@ -293,12 +293,21 @@ class DeepFeatureSynthesis(object):
             logger.info(r.parent_table.id+" "+r.child_table.id+" agg_features time:{:.3f}s".format(end-start))
 
         start = time.time()
+        new_cols = []
         for column in _local_data_stat_df.columns:
             if column in group_all:
+                new_cols.append(column)
                 continue
-            _c = ctypes.Numeric(column, r.parent_table)
-            all_features[r.parent_table.id][column] = _c
+            index = column.find('(')
+            new_col = column[:index+1]+r.child_table.id+'_'+column[index+1:]
+            new_cols.append(new_col)
+
+            _c = ctypes.Numeric(new_col, r.parent_table)
+            all_features[r.parent_table.id][new_col] = _c
             r.parent_table.columns += [_c]
+
+        rename_expr = [" `"+i+"`"+" as "+"`"+j+"` " for i, j in zip(_local_data_stat_df.columns, new_cols)]
+        _local_data_stat_df = _local_data_stat_df.selectExpr(rename_expr)
         end =time.time()
         if self.verbose:
             logger.info(r.parent_table.id+" "+r.child_table.id+" add columns time:{:.3f}s".format(end-start))

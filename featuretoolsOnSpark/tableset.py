@@ -18,22 +18,19 @@ class TableSet(object):
         id
         table_dict
         relationships
-        no_change_columns
         verbose
 
     Example:
     for Kaggle Competition Home Credit Default Risk Dataset(https://www.kaggle.com/c/home-credit-default-risk/data)
 
-        ts = fts.TableSet("home_credit",no_change_columns=["SK_ID_PREV","SK_ID_CURR","SK_ID_BUREAU"],verbose=True)
+        ts = fts.TableSet("home_credit",verbose=True)
 
     """
-    def __init__(self, id=None, no_change_columns=None, verbose=True):
+    def __init__(self, id=None, verbose=True):
         """Creates TableSet
 
             Args:
                 id(str) : Unique identifier to associate with this instance
-
-                no_change_columns([str]): Ids of the columns that can't be changed even if there are duplication of ids.
 
                 verbose(bool) : Whether to display information
         """
@@ -44,8 +41,6 @@ class TableSet(object):
 
         if self.verbose:
             logger.info("create tableset "+self.id)
-
-        self.no_change_columns = no_change_columns or []
     
     def table_from_dataframe(self,
                               table_id,
@@ -104,16 +99,6 @@ class TableSet(object):
             index=index,
             make_index=make_index,
             verbose=self.verbose)
-
-        #solve the problem that there are duplication of column ids in different tbales
-        for k,v in self.table_dict.items():
-            inters = set(v._get_column_ids()).intersection(set(table._get_column_ids()))
-
-            if len(inters)>0:
-                for inter in inters:
-                    if inter not in self.no_change_columns:
-                        v.convert_column_id(inter,k+'_'+inter)
-                        table.convert_column_id(inter,table.id+'_'+inter)
 
         self.table_dict[table.id] = table
 
