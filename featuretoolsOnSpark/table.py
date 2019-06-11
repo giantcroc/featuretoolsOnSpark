@@ -69,6 +69,7 @@ class Table(object):
         self.verbose = verbose
         self.df = df
         self.num_df = num_df
+        self.cnt = cnt
         self.old_len = len(df.columns)
 
         self._create_index(index, make_index)
@@ -273,7 +274,7 @@ class Table(object):
     @property
     def shape(self):
         '''Shape of the entity's dataframe'''
-        return (self.df.count(),len(self.columns))
+        return (self.cnt,len(self.columns))
 
     def _validate_table_params(self,id,df):
         '''Validation checks for Table inputs'''

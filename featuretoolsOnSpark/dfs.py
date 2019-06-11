@@ -17,7 +17,6 @@ def dfs(tableset=None,
         max_depth=2,
         ignore_tables=None,
         ignore_columns=None,
-        max_features=None,
         verbose=True):
     '''Calculates features given a tableset.
 
@@ -44,9 +43,6 @@ def dfs(tableset=None,
         ignore_columns (dict[str -> list[str]], optional): List of specific
             columns within each table to blacklist when creating features.
 
-        max_features (int, optional) : Limit the number of generated features to
-                this number. If -1, no limit.
-
         verbose(bool) : Whether to display information
 
         Example:
@@ -64,7 +60,6 @@ def dfs(tableset=None,
                                       allowed_paths=allowed_paths,
                                       ignore_tables=ignore_tables,
                                       ignore_columns=ignore_columns,
-                                      max_features=max_features,
                                       verbose=verbose)
 
     dfs_object.build_features(verbose=verbose)
@@ -89,9 +84,6 @@ class DeepFeatureSynthesis(object):
             max_depth (int, optional) : maximum allowed depth of features.
                 Default: 2. If -1, no limit.
 
-            max_features (int, optional) : Limit the number of generated features to
-                this number. If -1, no limit.
-
             allowed_paths (list[list[str]], optional): Allowed table paths to make
                 features for. If None, use all paths.
 
@@ -110,7 +102,6 @@ class DeepFeatureSynthesis(object):
                 tableset,
                 agg_primitives=None,
                 max_depth=2,
-                max_features=None,
                 allowed_paths=None,
                 ignore_tables=None,
                 ignore_columns=None,
@@ -126,10 +117,6 @@ class DeepFeatureSynthesis(object):
         if max_depth is not None:
             assert max_depth>0,"max_depth must be greater than 0"
         self.max_depth = max_depth
-
-        if max_features is not None:
-            assert max_features>0,"max_features must be greater than 0"
-        self.max_features = max_features
 
         self.allowed_paths = allowed_paths
         if self.allowed_paths:

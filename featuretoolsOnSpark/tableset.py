@@ -127,9 +127,9 @@ class TableSet(object):
         repr_out = u"Tableset: {}\n".format(self.id)
         repr_out += u"  Tables:"
         for e in self.tables:
-            if e.df.shape:
+            if e.shape:
                 repr_out += u"\n    {} [Rows: {}, Columns: {}]".format(
-                    e.id, e.raw_data.count(), e.df.shape[1])
+                    e.id, e.shape[0], e.shape[1])
             else:
                 repr_out += u"\n    {} [Rows: None, Columns: None]".format(
                     e.id)
