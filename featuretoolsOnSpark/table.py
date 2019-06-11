@@ -25,10 +25,8 @@ class Table(object):
         tableset
         verbose
         df
-        num_df
         index
-        old_len
-        columns
+        num_df
 
     """
     def __init__(self, id, df,tableset,num_df=None, column_types=None,
@@ -40,8 +38,7 @@ class Table(object):
 
             df (pyspark.sql.DataFrame): Dataframe providing the data for the Table.
 
-            num_df (int, optional): How many rows of pyspark.sql.DataFrame which are converted to pd.DataFrame.
-                Needed when data is the format of pyspark.sql.DataFrame.
+            num_df (int, optional): How many rows of pyspark.sql.DataFrame which are converted to pd.DataFrame to ensure type of columns.
 
             tableset (TableSet): Tableset for this Table.
 
@@ -56,11 +53,11 @@ class Table(object):
 
             verbose (bool) : Whether to display information
         """
+        cnt = df.count()
         if num_df is not None:
             assert num_df>0,"num_df must be greater than 0"
-            assert num_df<=df.count(),"num_df must be less than row num of df"
+            assert num_df<=cnt,"num_df must be less than row num of df"
         else:
-            cnt = df.count()
             assert cnt>10,"the numbers of dataframe must be greater than 10"
             num_df = 10
 
@@ -68,6 +65,7 @@ class Table(object):
 
         self.id = id
         self.tableset = tableset
+        self.pdf = df.limit(num_df).toPandas()
         self.verbose = verbose
         self.df = df
         self.num_df = num_df
@@ -94,6 +92,7 @@ class Table(object):
             column_types[self.index] = ctypes.Index
 
         link_cols = self.get_linked_cols()
+        
         inferred_column_types = self.infer_column_types(link_cols,column_types)
 
         inferred_column_types.update(column_types)
@@ -128,13 +127,13 @@ class Table(object):
             column_types (dict[str -> dict[str -> type]]) : A table's column_types dict maps string column ids 
                 to types (:class:`.Column`)
                 or (type, kwargs) to pass keyword arguments to the column.
-        '''
-        df = self.df.limit(self.num_df).toPandas()
+        '''  
+        df = self.pdf
 
         inferred_types = {}
-        inferred_type = None
         for column in df.columns:
             column = column.encode("utf-8")
+            inferred_type = None
             if column in column_types:
                 continue
             else:
@@ -143,6 +142,7 @@ class Table(object):
                 else:
                     col = df[column]
                 col = col.dropna().reset_index(drop=True)
+
                 if len(col)==0:
                     continue
                 elif col.dtype == "object":
@@ -162,6 +162,7 @@ class Table(object):
                     inferred_type = ctypes.Datetime
                 else:
                     inferred_type = ctypes.Numeric
+
             if inferred_type != None:
                 inferred_types[column] = inferred_type
 
