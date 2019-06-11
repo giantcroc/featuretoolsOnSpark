@@ -18,7 +18,7 @@ def dfs(tableset=None,
         ignore_tables=None,
         ignore_columns=None,
         max_features=None,
-        verbose=False):
+        verbose=True):
     '''Calculates features given a tableset.
 
     Args:
@@ -47,6 +47,8 @@ def dfs(tableset=None,
         max_features (int, optional) : Limit the number of generated features to
                 this number. If -1, no limit.
 
+        verbose(bool) : Whether to display information
+
         Example:
         for Kaggle Competition Home Credit Default Risk Dataset(https://www.kaggle.com/c/home-credit-default-risk/data)
 
@@ -62,11 +64,13 @@ def dfs(tableset=None,
                                       allowed_paths=allowed_paths,
                                       ignore_tables=ignore_tables,
                                       ignore_columns=ignore_columns,
-                                      max_features=max_features)
-    end=time.time()
-    logger.info("DeepFeatureSynthesis:{:.3f}s".format(end-start))
+                                      max_features=max_features,
+                                      verbose=verbose)
 
     dfs_object.build_features(verbose=verbose)
+    end=time.time()
+    if verbose:
+        logger.info("All DFS Time:{:.3f}s".format(end-start))
 
 
 class DeepFeatureSynthesis(object):
@@ -97,6 +101,8 @@ class DeepFeatureSynthesis(object):
             ignore_columns (dict[str -> list[str]], optional): List of specific
                 columns within each table to blacklist when creating features.
                 If None, use all columns.
+
+            verbose(bool) : Whether to display information
         """
 
     def __init__(self,
@@ -107,13 +113,15 @@ class DeepFeatureSynthesis(object):
                 max_features=None,
                 allowed_paths=None,
                 ignore_tables=None,
-                ignore_columns=None):
+                ignore_columns=None,
+                verbose=True):
 
         if target_table_id not in tableset.table_dict:
             ts_name = tableset.id or 'table set'
             msg = 'Provided target table %s does not exist in %s' % (target_table_id, ts_name)
             raise KeyError(msg)
 
+        self.verbose = verbose
         # need to change max_depth to None because DFs terminates when  <0
         if max_depth is not None:
             assert max_depth>0,"max_depth must be greater than 0"
@@ -155,7 +163,8 @@ class DeepFeatureSynthesis(object):
                     raise ValueError("Unknown aggregation primitive {}. ".format(a))
             self.agg_primitives.append(a.lower())
 
-        logger.info(("using agg_primitives:",self.agg_primitives))
+        if self.verbose:
+            logger.info(("using agg_primitives:",self.agg_primitives))
     
     def build_features(self, verbose=False):
         """Automatically builds feature definitions for target
@@ -187,8 +196,8 @@ class DeepFeatureSynthesis(object):
         self.ts[self.target_table_id].df = self.ts[self.target_table_id].df.selectExpr(rename_expr)
 
         end = time.time()
-        logger.info(" change features time:{:.3f}s".format(end-start))
-        #return self.ts[self.target_table_id].df
+        if self.verbose:
+            logger.info(" change features time:{:.3f}s".format(end-start))
 
     
     def _run_dfs(self, table, table_path, all_features, max_depth):
@@ -238,7 +247,8 @@ class DeepFeatureSynthesis(object):
                                      all_features=all_features,
                                      max_depth=max_depth)
             end = time.time()
-            logger.info(r.parent_table.id+" "+r.child_table.id+" build agg features time:{:.3f}s".format(end-start))
+            if self.verbose:
+                logger.info(r.parent_table.id+" "+r.child_table.id+" build agg features time:{:.3f}s".format(end-start))
 
         """
         Step 3 - Add all features
@@ -266,7 +276,8 @@ class DeepFeatureSynthesis(object):
         features = [f for f in features if not self._feature_in_relationship_path(relationship_path, f)]
         _local_data_stat_df = None
 
-        logger.info(r.parent_table.id+" "+r.child_table.id+" select {} features.".format(len(features)))
+        if self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" select {} features.".format(len(features)))
         start = time.time()
         group_all = list()  
         group_all.append(r.child_column.id) 
@@ -278,7 +289,8 @@ class DeepFeatureSynthesis(object):
         _local_data_stat_df = r.child_table.df.groupby(group_all).agg(*[eval(f) for f  in features_prim])
         end =time.time()
 
-        logger.info(r.parent_table.id+" "+r.child_table.id+" agg_features time:{:.3f}s".format(end-start))
+        if self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" agg_features time:{:.3f}s".format(end-start))
 
         start = time.time()
         for column in _local_data_stat_df.columns:
@@ -288,7 +300,8 @@ class DeepFeatureSynthesis(object):
             all_features[r.parent_table.id][column] = _c
             r.parent_table.columns += [_c]
         end =time.time()
-        logger.info(r.parent_table.id+" "+r.child_table.id+" add columns time:{:.3f}s".format(end-start))
+        if self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" add columns time:{:.3f}s".format(end-start))
 
         start = time.time()
         r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
@@ -297,7 +310,8 @@ class DeepFeatureSynthesis(object):
         for col in group_all:
             r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[col])
         end =time.time()
-        logger.info(r.parent_table.id+" "+r.child_table.id+" join parent table time:{:.3f}s".format(end-start))
+        if self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" join parent table time:{:.3f}s".format(end-start))
 
     def _add_all_features(self, all_features, table):
         """add all columns from the given table into features

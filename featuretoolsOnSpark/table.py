@@ -30,21 +30,29 @@ class Table(object):
 
     """
     def __init__(self, id, df,tableset,num_df=None, column_types=None,
-                 index=None, make_index=False,verbose=False):
+                 index=None, make_index=False,verbose=True):
         """ Create Table
 
         Args:
             id (str): Id of Table.
+
             df (pyspark.sql.DataFrame): Dataframe providing the data for the Table.
+
             num_df (int, optional): How many rows of pyspark.sql.DataFrame which are converted to pd.DataFrame.
                 Needed when data is the format of pyspark.sql.DataFrame.
+
             tableset (TableSet): Tableset for this Table.
+
             column_types (dict[str -> dict[str -> type]]) : A table's column_types dict maps string column ids to types (:class:`.Column`)
                 or (type, kwargs) to pass keyword arguments to the Column.
+
             index (str): Name of id column in the dataframe.
+
             make_index (bool, optional) : If True, assume index does not exist as a column in
                 dataframe, and create a new column of that name using integers the (0, len(dataframe)).
                 Otherwise, assume index exists in dataframe.
+
+            verbose (bool) : Whether to display information
         """
         if num_df is not None:
             assert num_df>0,"num_df must be greater than 0"
@@ -62,12 +70,14 @@ class Table(object):
         self.verbose = verbose
         self.df = df
         self.num_df = num_df
+        self.old_len = len(df.columns)
 
         self._create_index(index, make_index)
 
         self._create_columns(column_types)
 
-        logger.info("create table "+self.id)
+        if self.verbose:
+            logger.info("create table "+self.id)
     
     def _create_columns(self, column_types):
         """Extracts the columns from a dataframe

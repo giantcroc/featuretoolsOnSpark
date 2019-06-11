@@ -19,26 +19,31 @@ class TableSet(object):
         table_dict
         relationships
         no_change_columns
+        verbose
 
     Example:
     for Kaggle Competition Home Credit Default Risk Dataset(https://www.kaggle.com/c/home-credit-default-risk/data)
 
-        ts = fts.TableSet("home_credit",no_change_columns=["SK_ID_PREV","SK_ID_CURR","SK_ID_BUREAU"])
+        ts = fts.TableSet("home_credit",no_change_columns=["SK_ID_PREV","SK_ID_CURR","SK_ID_BUREAU"],verbose=True)
 
     """
-    def __init__(self, id=None, no_change_columns=None):
+    def __init__(self, id=None, no_change_columns=None, verbose=True):
         """Creates TableSet
 
             Args:
-                id (str) : Unique identifier to associate with this instance
+                id(str) : Unique identifier to associate with this instance
 
-                no_change_columns([str]): ids of the columns that can't be changed even if there are duplication of ids.
+                no_change_columns([str]): Ids of the columns that can't be changed even if there are duplication of ids.
+
+                verbose(bool) : Whether to display information
         """
         self.id = id or "tableset"
         self.table_dict = {}
         self.relationships = []
+        self.verbose = verbose
 
-        logger.info("create tableset "+self.id)
+        if self.verbose:
+            logger.info("create tableset "+self.id)
 
         self.no_change_columns = no_change_columns or []
     
@@ -97,7 +102,8 @@ class TableSet(object):
             num_df=num_df,
             column_types=column_types,
             index=index,
-            make_index=make_index)
+            make_index=make_index,
+            verbose=self.verbose)
 
         #solve the problem that there are duplication of column ids in different tbales
         for k,v in self.table_dict.items():
