@@ -8,7 +8,7 @@ with open(path.join(dirname, 'README.md')) as f:
 
 setup(
     name='featuretoolsOnSpark',
-    version='0.1.1',
+    version='0.1.3',
     packages=find_packages(),
     description='A simplified version of featuretools for Spark',
     license='MIT',

@@ -83,10 +83,20 @@ class Discrete(Column):
 
     @interesting_values.setter
     def interesting_values(self, values):
-        seen = set()
-        seen_add = seen.add
-        self._interesting_values = [v for v in values
-                                    if not (v in seen or seen_add(v))]
+        values = set(values)
+        self._interesting_values = [v for v in values]
+
+    def __repr__(self):
+        ret = u"<Column: {} (dtype = {}, table = {})>\n".format(self.id, self.type_string,self.table_id)
+        ret += u"  interesting_values:"
+        for v in self.interesting_values:
+            ret += u"\n    "+v
+
+        # encode for python 2
+        if type(ret) != str:
+            ret = ret.encode("utf-8")
+
+        return ret
 
 class Boolean(Column):
     """

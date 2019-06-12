@@ -13,6 +13,7 @@ logger.setLevel(20)
 def dfs(tableset=None,
         target_table=None,
         agg_primitives=None,
+        where_primitives=None,
         allowed_paths=None,
         max_depth=2,
         ignore_tables=None,
@@ -31,6 +32,11 @@ def dfs(tableset=None,
             Feature types to apply.
 
                 Default: ['avg','count','kurtosis','skewness','stddev','min','max','sum']
+
+        where_primitives (list[str], optional):
+            List of Primitives names to apply with where clauses.
+
+                Default:['avg','count','kurtosis','skewness','stddev','min','max','sum']
 
         allowed_paths (list[list[str]]): Allowed table paths on which to make
             features.
@@ -56,6 +62,7 @@ def dfs(tableset=None,
     start=time.time()
     dfs_object = DeepFeatureSynthesis(target_table, tableset,
                                       agg_primitives=agg_primitives,
+                                      where_primitives=where_primitives,
                                       max_depth=max_depth,
                                       allowed_paths=allowed_paths,
                                       ignore_tables=ignore_tables,
@@ -81,6 +88,11 @@ class DeepFeatureSynthesis(object):
 
                 Default: ['avg','count','kurtosis','skewness','stddev','min','max','sum']
 
+            where_primitives (list[str], optional):
+                only add where clauses to these types of Primitives
+
+                Default: ['avg','count','kurtosis','skewness','stddev','min','max','sum']
+
             max_depth (int, optional) : maximum allowed depth of features.
                 Default: 2. If -1, no limit.
 
@@ -101,6 +113,7 @@ class DeepFeatureSynthesis(object):
                 target_table_id,
                 tableset,
                 agg_primitives=None,
+                where_primitives=None,
                 max_depth=2,
                 allowed_paths=None,
                 ignore_tables=None,
@@ -152,6 +165,19 @@ class DeepFeatureSynthesis(object):
 
         if self.verbose:
             logger.info(("using agg_primitives:",self.agg_primitives))
+
+        if where_primitives is None:
+            where_primitives = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
+        self.where_primitives = []
+        where_prim_default = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
+        for a in where_primitives:
+            if isinstance(a,str):
+                if a.lower() not in where_prim_default:
+                    raise ValueError("Unknown where primitive {}. ".format(a))
+            self.where_primitives.append(a.lower())
+
+        if self.verbose:
+            logger.info(("using where_primitives:",self.where_primitives))
     
     def build_features(self, verbose=False):
         """Automatically builds feature definitions for target
@@ -233,6 +259,10 @@ class DeepFeatureSynthesis(object):
             self._build_agg_features(r=r,
                                      all_features=all_features,
                                      max_depth=max_depth)
+            if len(self.where_primitives) > 0:
+                self._build_where_features(r=r,
+                                        all_features=all_features,
+                                        max_depth=max_depth)
             end = time.time()
             if self.verbose:
                 logger.info(r.parent_table.id+" "+r.child_table.id+" build agg features time:{:.3f}s".format(end-start))
@@ -264,50 +294,145 @@ class DeepFeatureSynthesis(object):
         _local_data_stat_df = None
 
         if self.verbose:
-            logger.info(r.parent_table.id+" "+r.child_table.id+" select {} features.".format(len(features)))
-        start = time.time()
-        group_all = list()  
-        group_all.append(r.child_column.id) 
-        features_prim = []
-        for agg_prim in self.agg_primitives:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" agg select {} features.".format(len(features)))
+        if len(features) > 0:
+            start = time.time()
+            group_all = list()  
+            group_all.append(r.child_column.id) 
+            features_prim = []
+            for agg_prim in self.agg_primitives:
 
-            features_prim +=[agg_prim+"(\""+f.id+"\")" for f in features]
-            
-        _local_data_stat_df = r.child_table.df.groupby(group_all).agg(*[eval(f) for f  in features_prim])
-        end =time.time()
+                features_prim +=[agg_prim+"(\""+f.id+"\")" for f in features]
+                
+            _local_data_stat_df = r.child_table.df.groupby(group_all).agg(*[eval(f) for f  in features_prim])
+            end =time.time()
+
+            if self.verbose:
+                logger.info(r.parent_table.id+" "+r.child_table.id+" agg_features time:{:.3f}s".format(end-start))
+
+            start = time.time()
+            new_cols = []
+            for column in _local_data_stat_df.columns:
+                if column in group_all:
+                    new_cols.append(column)
+                    continue
+                index = column.find('(')
+                new_col = column[:index+1]+r.child_table.id+'_'+column[index+1:]
+                new_cols.append(new_col)
+
+                _c = ctypes.Numeric(new_col, r.parent_table)
+                all_features[r.parent_table.id][new_col] = _c
+                r.parent_table.columns += [_c]
+
+            rename_expr = [" `"+i+"`"+" as "+"`"+j+"` " for i, j in zip(_local_data_stat_df.columns, new_cols)]
+            _local_data_stat_df = _local_data_stat_df.selectExpr(rename_expr)
+            end =time.time()
+            if self.verbose:
+                logger.info(r.parent_table.id+" "+r.child_table.id+" add columns time:{:.3f}s".format(end-start))
+
+            start = time.time()
+            r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
+                r.parent_table.df[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
+
+            for col in group_all:
+                r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[col])
+            end =time.time()
+            if self.verbose:
+                logger.info(r.parent_table.id+" "+r.child_table.id+" join parent table time:{:.3f}s".format(end-start))
+        elif self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" no feature is selected to do agg process!")
+
+    
+    def _build_where_features(self, r, all_features, max_depth=0):
+        if max_depth is not None and max_depth < 0:
+            return
+
+        new_max_depth = None
+        if max_depth is not None:
+            new_max_depth = max_depth - 1
+
+        input_types = "numeric"
+
+        features = self._features_by_type(all_features=all_features,
+                                            table=r.child_table,
+                                            max_depth=new_max_depth,
+                                            column_type=input_types)
+
+        where_features = self._features_where_clauses(all_features=all_features,
+                                            table=r.child_table,
+                                            max_depth=new_max_depth)
+
+        # remove features in relationship path
+        relationship_path = self.ts.find_backward_path(self.target_table_id, r.child_table.id)
+
+        features = [f for f in features if not self._feature_in_relationship_path(relationship_path, f)]
 
         if self.verbose:
-            logger.info(r.parent_table.id+" "+r.child_table.id+" agg_features time:{:.3f}s".format(end-start))
+            logger.info(r.parent_table.id+" "+r.child_table.id+" where select {} features.".format(len(features)))
+            logger.info(r.parent_table.id+" "+r.child_table.id+" where select {} where-features.".format(len(where_features)))
 
-        start = time.time()
-        new_cols = []
-        for column in _local_data_stat_df.columns:
-            if column in group_all:
-                new_cols.append(column)
-                continue
-            index = column.find('(')
-            new_col = column[:index+1]+r.child_table.id+'_'+column[index+1:]
-            new_cols.append(new_col)
+        if len(features) > 0 and len(where_features) > 0:
 
-            _c = ctypes.Numeric(new_col, r.parent_table)
-            all_features[r.parent_table.id][new_col] = _c
-            r.parent_table.columns += [_c]
+            features_prim = []
+            for where_prim in self.where_primitives:
+                features_prim +=[where_prim+"(\""+f.id+"\")" for f in features]
+            group_all = list()  
+            group_all.append(r.child_column.id) 
 
-        rename_expr = [" `"+i+"`"+" as "+"`"+j+"` " for i, j in zip(_local_data_stat_df.columns, new_cols)]
-        _local_data_stat_df = _local_data_stat_df.selectExpr(rename_expr)
-        end =time.time()
-        if self.verbose:
-            logger.info(r.parent_table.id+" "+r.child_table.id+" add columns time:{:.3f}s".format(end-start))
+            _local_data_stat_df = None
+            for feature in where_features:
+                for value in feature.interesting_values:
+                    
+                    start = time.time()
+                    data = r.child_table.df.filter(r.child_table.df[feature.id]==value)   
+                    _stat_df = data.groupby(group_all).agg(*[eval(f) for f  in features_prim])
+                    end =time.time()
+                    if self.verbose:
+                        logger.info(feature.id+" "+value+" where_features time:{:.3f}s".format(end-start))
 
-        start = time.time()
-        r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
-            r.parent_table.df[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
+                    start = time.time()
+                    new_cols = []
+                    for column in _stat_df.columns:
+                        if column in group_all:
+                            new_cols.append(column)
+                            continue
+                        index = column.find('(')
+                        new_col = column[:index+1]+r.child_table.id+'_'+feature.id+'_'+value+'_'+column[index+1:]
+                        new_cols.append(new_col)
 
-        for col in group_all:
-            r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[col])
-        end =time.time()
-        if self.verbose:
-            logger.info(r.parent_table.id+" "+r.child_table.id+" join parent table time:{:.3f}s".format(end-start))
+                        _c = ctypes.Numeric(new_col, r.parent_table)
+                        all_features[r.parent_table.id][new_col] = _c
+                        r.parent_table.columns += [_c]
+
+                    rename_expr = [" `"+i+"`"+" as "+"`"+j+"` " for i, j in zip(_stat_df.columns, new_cols)]
+                    _stat_df = _stat_df.selectExpr(rename_expr)
+                    end = time.time()
+                    if self.verbose:
+                        logger.info(feature.id+" "+value+" add columns time:{:.3f}s".format(end-start))
+
+                    start = time.time()
+                    if _local_data_stat_df is None:
+                        _local_data_stat_df = _stat_df
+                    else:
+                        _local_data_stat_df = _local_data_stat_df.join(_stat_df,r.child_column.id,how='full_outer')
+
+                        for col in group_all:
+                            _local_data_stat_df = _local_data_stat_df.drop(_stat_df[col])
+                    end =time.time()
+                    if self.verbose:
+                        logger.info(feature.id+" "+value+" join local table time:{:.3f}s".format(end-start))
+
+            start = time.time()
+            r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
+                r.parent_table.df[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
+
+            for col in group_all:
+                r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[col])
+            end =time.time()
+            if self.verbose:
+                logger.info(feature.id+" "+value+" join parent table time:{:.3f}s".format(end-start))
+        elif self.verbose:
+                logger.info(r.parent_table.id+" "+r.child_table.id+" no where-feature is selected to do agg process!")
 
     def _add_all_features(self, all_features, table):
         """add all columns from the given table into features
@@ -346,4 +471,18 @@ class DeepFeatureSynthesis(object):
             if  relationship.child_column.id == feature.id or relationship.parent_column.id == feature.id:
                 return True
         return False
+
+    def _features_where_clauses(self, all_features, table, max_depth):
+
+        selected_features = []
+
+        if max_depth is not None and max_depth < 0:
+            return selected_features
+
+        for feat in all_features[table.id]:
+            f = all_features[table.id][feat]
+            if f.dtype == "categorical" and len(f.interesting_values) > 0:
+                selected_features.append(f)
+
+        return selected_features
         
