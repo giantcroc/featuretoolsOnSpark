@@ -89,18 +89,22 @@ First,you should guarantee that all csv files needed have been saved as [Spark D
 
 >> ts.add_relationships([re1,re2,re3,re4,re5,re6])
 ```
-#### 6. Print Available Agg_primitives
+#### 6. Add Interesting Values
+```python
+ts["bureau"]["CREDIT_ACTIVE"].interesting_values = ['Closed','Active']
+```
+#### 7. Print Available Agg_primitives
 ```python
 >> fts.print_agg_prims()
 ```
 ```
 ['avg', 'count', 'kurtosis', 'skewness', 'stddev', 'min', 'max', 'sum']
 ```
-#### 7. Run DFS To Generate Features
+#### 8. Run DFS To Generate Features
 ```python
 >> fts.dfs(tableset=ts, agg_primitives=["sum",'min','max','avg'],where_primitives=['count','min','max'],target_table='app_train',max_depth=2,verbose=False)
 ```
-#### 8. Get Features
+#### 9. Get Features
 ```python
 >> new_app_train = ts["app_train"].df
 
