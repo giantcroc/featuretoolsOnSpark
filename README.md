@@ -28,6 +28,7 @@ First,you should guarantee that all csv files needed have been saved as [Spark D
 
 >> spark = SparkSession \
    	.builder \
+	.config("spark.sql.shuffle.partitions", 500)
    	.appName("home-credit") \
    	.enableHiveSupport()\
    	.getOrCreate()
