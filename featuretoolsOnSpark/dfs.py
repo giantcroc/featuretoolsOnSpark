@@ -4,6 +4,7 @@ from featuretoolsOnSpark.tableset import TableSet
 from collections import defaultdict
 import featuretoolsOnSpark.column_types as ctypes
 from pyspark.sql.functions import *
+from pyspark.sql.window import Window
 import time,logging
 
 logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
@@ -263,6 +264,10 @@ class DeepFeatureSynthesis(object):
                 self._build_where_features(r=r,
                                         all_features=all_features,
                                         max_depth=max_depth)
+            if len(r.child_table.interesting_columns) > 0:
+                self._build_cate_features(r=r,
+                                        all_features=all_features,
+                                        max_depth=max_depth)
             end = time.time()
             if self.verbose:
                 logger.info(r.parent_table.id+" "+r.child_table.id+" build agg features time:{:.3f}s".format(end-start))
@@ -434,6 +439,45 @@ class DeepFeatureSynthesis(object):
         elif self.verbose:
                 logger.info(r.parent_table.id+" "+r.child_table.id+" no where-feature is selected to do agg process!")
 
+    def _build_cate_features(self, r, all_features, max_depth=0):
+        if max_depth is not None and max_depth < 0:
+            return
+
+        new_max_depth = None
+        if max_depth is not None:
+            new_max_depth = max_depth - 1
+
+        features = self._features_intere_cate(all_features=all_features,
+                                            table=r.child_table,
+                                            max_depth=new_max_depth)
+
+        # remove features in relationship path
+        relationship_path = self.ts.find_backward_path(self.target_table_id, r.child_table.id)
+
+        features = [f for f in features if not self._feature_in_relationship_path(relationship_path, f)]
+        _local_data_stat_df = None
+
+        if self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" categorical select {} features.".format(len(features)))
+        if len(features) > 0:
+            for f in features:
+                group_all = list()  
+                group_all.append(r.child_column.id)
+                group_all.append(f.id)
+                _local_data_stat_df = r.child_table.df.groupby(group_all).count()
+                _local_data_stat_df = _local_data_stat_df.withColumn(f.id,first(_local_data_stat_df[f.id]).\
+                    over(Window().partitionBy(r.child_column.id).orderBy(desc('count'))))[[r.child_column.id,f.id]].dropDuplicates()
+                r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
+                    r.parent_table.df[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
+
+                r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[r.child_column.id])
+
+                _c = ctypes.Categorical(f.id, r.parent_table)
+                all_features[r.parent_table.id][f.id] = _c
+                r.parent_table.columns += [_c]
+        elif self.verbose:
+            logger.info(r.parent_table.id+" "+r.child_table.id+" no feature is selected to do categorical process!")
+
     def _add_all_features(self, all_features, table):
         """add all columns from the given table into features
 
@@ -483,6 +527,24 @@ class DeepFeatureSynthesis(object):
             f = all_features[table.id][feat]
             if f.dtype == "categorical" and len(f.interesting_values) > 0:
                 selected_features.append(f)
+
+        return selected_features
+
+    def _features_intere_cate(self, all_features, table, max_depth):
+
+        selected_features = []
+
+        if max_depth is not None and max_depth < 0:
+            return selected_features
+
+        for feat in all_features[table.id]:
+            f = all_features[table.id][feat]
+            if f.id in table.interesting_columns:
+                if f.dtype != "categorical":
+                    logger.warning("{} must be type of categorical not {}".format(f.id,f.dtype))
+                    continue
+                else:
+                    selected_features.append(f)
 
         return selected_features
         

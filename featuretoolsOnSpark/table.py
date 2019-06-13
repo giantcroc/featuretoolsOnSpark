@@ -76,6 +76,8 @@ class Table(object):
 
         self._create_columns(column_types)
 
+        self.interesting_columns=[]
+
         if self.verbose:
             logger.info("create table "+self.id)
     
@@ -101,7 +103,7 @@ class Table(object):
         for c in inferred_column_types:
             ctype = inferred_column_types[c]
             if isinstance(ctype, tuple):
-                _c = ctype[0](c, self, **ctype[1])
+                _c = ctype[0](c, self, ctype[1])
             else:
                 _c = inferred_column_types[c](c, self)
             columns += [_c]
@@ -146,23 +148,26 @@ class Table(object):
 
                 if len(col)==0:
                     continue
-                elif col.dtype == "object":
+                elif col.dtype.name == "object":
                     if column in link_cols:
                         inferred_type = ctypes.Categorical
                     else:
-                        if self.col_is_datetime(col):
-                            inferred_type = ctypes.Datetime
+                        is_datetime,formatt = self.col_is_datetime(col)
+                        if is_datetime:
+                            inferred_type = (ctypes.Datetime,formatt)
                         else:
                             inferred_type = ctypes.Categorical
 
-                elif col.dtype == "bool":
+                elif col.dtype.name == "bool":
                     inferred_type = ctypes.Boolean
                 elif column in link_cols:
                     inferred_type = ctypes.Ordinal
-                elif self.col_is_datetime(col):
-                    inferred_type = ctypes.Datetime
                 else:
-                    inferred_type = ctypes.Numeric
+                    is_datetime,formatt = self.col_is_datetime(col)
+                    if is_datetime:
+                        inferred_type = (ctypes.Datetime,formatt)
+                    else:
+                        inferred_type = ctypes.Numeric
 
             if inferred_type != None:
                 inferred_types[column] = inferred_type
@@ -170,16 +175,29 @@ class Table(object):
         return inferred_types
 
     def col_is_datetime(self,col):
+        if col.dtype.name.find('datetime') > -1:
+            return True,col.dtype.name
+        def is_time_format(data):
+            if data[:4] < '1970' or data[:4] > '2020':
+                return False
+            if data[4:6] > '12' or data[4:6] < '01':
+                return False
+            if data[6:8] > '31' or data[6:8] < '01':
+                return False
+            return True
         if col.dtype.name.find('int32') > -1 or col.dtype.name.find('int64') > -1 or col.dtype.name.find('int16') > -1:
             col = col.astype(str)
         # re match two patterns:1.2013[-/]04[-/]29 2.2013[-/]04[-/]29 03:04:30
         if col.dtype.name.find('str') > -1 or col.dtype.name.find('object') > -1:
-            #print(col[0])
+            
             pattern1 = r"\d{4}[-/]?\d{2}[-/]?\d{2}"
             pattern2 = r"\d{4}[-/]?d{2}[-/]?d{2}\s\d{2}:\d{2}:\d{2}"
-            if re.match(pattern1,col[0])!=None or re.match(pattern2,col[0])!=None:
-                return True
-        return False
+            if re.match(pattern1,col[0]):
+                if is_time_format(col[0]):
+                    return True,'year[-/]month[-/]day'
+            if re.match(pattern2,col[0]):
+                return True,'year[-/]month[-/]day hour:min:sec'
+        return False,None
 
     def __getitem__(self, column_id):
         return self._get_column(column_id)
