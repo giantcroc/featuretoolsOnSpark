@@ -6,9 +6,7 @@ import featuretoolsOnSpark.column_types as ctypes
 from featuretoolsOnSpark.table import Table
 from featuretoolsOnSpark.relationship import Relationship
 
-logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
-logger = logging.getLogger('featuretoolsOnSpark')
-logger.setLevel(20)
+from featuretoolsOnSpark.util import *
 
 class TableSet(object):
     """

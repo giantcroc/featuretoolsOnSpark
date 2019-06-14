@@ -13,9 +13,7 @@ import featuretoolsOnSpark.column_types as ctypes
 
 import re
 
-logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
-logger = logging.getLogger('featuretoolsOnSpark')
-logger.setLevel(20)
+from featuretoolsOnSpark.util import *
 
 class Table(object):
     """Represents a table in a tableset, and stores relevant metadata and data

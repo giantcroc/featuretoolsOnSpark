@@ -6,6 +6,7 @@ from featuretoolsOnSpark.column_types import *
 from featuretoolsOnSpark.relationship import *
 from featuretoolsOnSpark.dfs import *
 from featuretoolsOnSpark.version import __version__
+from featuretoolsOnSpark.util import *
 
 agg_prim_default = ['avg','count','kurtosis','skewness','stddev','min','max','sum']
 

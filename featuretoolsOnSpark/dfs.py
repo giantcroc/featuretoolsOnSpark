@@ -5,11 +5,7 @@ from collections import defaultdict
 import featuretoolsOnSpark.column_types as ctypes
 from pyspark.sql.functions import *
 from pyspark.sql.window import Window
-import time,logging
-
-logging.basicConfig(format = '%(module)s-%(levelname)s- %(message)s')
-logger = logging.getLogger('featuretoolsOnSpark')
-logger.setLevel(20)
+from featuretoolsOnSpark.util import *
 
 def dfs(tableset=None,
         target_table=None,
@@ -464,16 +460,18 @@ class DeepFeatureSynthesis(object):
                 group_all = list()  
                 group_all.append(r.child_column.id)
                 group_all.append(f.id)
+
+                new_col = r.child_column.id+'_'+f.id+'_mode'
                 _local_data_stat_df = r.child_table.df.groupby(group_all).count()
-                _local_data_stat_df = _local_data_stat_df.withColumn(f.id,first(_local_data_stat_df[f.id]).\
+                _local_data_stat_df = _local_data_stat_df.withColumn(new_col,first(_local_data_stat_df[f.id]).\
                     over(Window().partitionBy(r.child_column.id).orderBy(desc('count'))))[[r.child_column.id,f.id]].dropDuplicates()
                 r.parent_table.df = r.parent_table.df.join(_local_data_stat_df,\
                     r.parent_table.df[r.parent_column.id]==_local_data_stat_df[r.child_column.id],how='left_outer')
 
                 r.parent_table.df = r.parent_table.df.drop(_local_data_stat_df[r.child_column.id])
 
-                _c = ctypes.Categorical(f.id, r.parent_table)
-                all_features[r.parent_table.id][f.id] = _c
+                _c = ctypes.Categorical(new_col, r.parent_table)
+                all_features[r.parent_table.id][new_col] = _c
                 r.parent_table.columns += [_c]
         elif self.verbose:
             logger.info(r.parent_table.id+" "+r.child_table.id+" no feature is selected to do categorical process!")
