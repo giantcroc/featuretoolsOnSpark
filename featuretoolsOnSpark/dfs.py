@@ -461,7 +461,7 @@ class DeepFeatureSynthesis(object):
                 group_all.append(r.child_column.id)
                 group_all.append(f.id)
 
-                new_col = r.child_column.id+'_'+f.id+'_mode'
+                new_col = r.child_table.id+'_'+f.id+'_mode'
                 _local_data_stat_df = r.child_table.df.groupby(group_all).count()
                 _local_data_stat_df = _local_data_stat_df.withColumn(new_col,first(_local_data_stat_df[f.id]).\
                     over(Window().partitionBy(r.child_column.id).orderBy(desc('count'))))[[r.child_column.id,f.id]].dropDuplicates()
